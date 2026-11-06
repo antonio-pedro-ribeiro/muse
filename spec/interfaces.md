@@ -82,15 +82,19 @@ and WebSocket alike. Use a reverse proxy for TLS.
 
 ## 3. Web UI
 
-A static page served at `/`, built from plain scripts with a small canvas renderer. There is no build step
-and no CDN.
+A static page served at `/`, built from plain scripts with a small canvas/SVG renderer. There is no build step
+and no CDN. Pages are arranged by the questions a user asks: is the signal good, what is it doing now, how did
+it change, what happened. Technical detail sits in collapsed **Details** sections. Every heading, field,
+button and column has an ⓘ explanation; plugin views bring their own (`ViewSpec.description`).
 
 | Page | Contents |
 |---|---|
-| Live | Connection, battery, quality bars, analyzer views, marker button, calibrate, start/stop |
-| Sessions | List; open, export, analyze |
-| Session | Recorded traces with event overlay, derived views, reports |
-| Plugins | Status and config forms generated from JSON schema |
+| Live: start | Source cards (Headband over Bluetooth, Via Mind Monitor, Test signals), label, record toggle; **Advanced** for source options and analyzers (always run in dependency order); link to the last session |
+| Live: running | Header (label, status, elapsed, battery, how data arrives or `replay N×`, Stop); Add marker and Calibrate (hidden in replays); calibration banner with countdown; **Electrode signal** (Signal strength head map, usable share, warning when under half); **Brain waves** (latest description, band columns with 2-minute lines); **Trends**, **Signal**, **Events** sections that appear as their cards get data; **Details** (plugin health, session, device) |
+| Sessions | Table: start, label, length, device, usable share, data received, first line of the description, status; search by label or description |
+| Session | Replay (1/2/5/10×), Analyze, Export menu (CSV, EDF+); **Summary** (key numbers, Signal strength over the session, descriptions for the whole session and each segment); **Timeline** (band power over time and a recorded stream on one axis, segment chips zoom both); **Charts** (whole-session views); **Details** (data completeness, HTML reports, plugin versions, plugin numbers) |
+| Plugins | Status, hints for missing dependencies, every option with default and explanation (reference; linked at the right of the top bar) |
 
-There is one render function per `ViewSpec.type`, all in `renderers.js` (also inlined into reports). UI copy describes measurements
-("relative alpha power"), not mental states.
+Views are placed by `ViewSpec.section`: `quality` → Electrode signal, `now` → Brain waves, `trends`, `signal`,
+`events`. There is one render function per `ViewSpec.type`, all in `renderers.js` (also inlined into reports).
+UI copy describes measurements ("share of alpha power"), not mental states.

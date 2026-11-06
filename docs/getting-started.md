@@ -68,8 +68,9 @@ forehead (AF7, AF8). It also has extra inputs, optical sensors that track blood 
 sensors (accelerometer and gyroscope). The app reads whichever sensors the headband sends.
 
 **Signal quality.** EEG signals are tiny, millionths of a volt, so good skin contact matters more
-than anything. The quality analyzer rates each electrode as good, poor contact, noisy or flat.
-Check it first: if contact is poor, the other numbers aren't meaningful.
+than anything. The quality analyzer rates each electrode as good, poor contact, noisy or flat, and
+the **Signal strength** picture shows each electrode where it touches your head. Check it first: if
+contact is poor, the other numbers aren't meaningful.
 
 **Band power.** Brain activity is often described by rhythms in frequency bands:
 
@@ -145,9 +146,10 @@ uv run muse serve
 Open **http://127.0.0.1:8765** in your browser, then:
 
 1. On the **Live** page, choose **Headband (Bluetooth)**, keep the defaults and press **Start session**.
-2. Look at **Signal check** first. Adjust the headband until most electrodes are good.
+2. Look at **Signal strength** (under Electrode signal) first. Adjust the headband until most
+   electrodes are solid green.
 3. Press **Calibrate (2 min)** and follow the banner: eyes open, then eyes closed.
-4. Watch **Right now**: the description and the band power; alpha usually rises while your eyes are closed.
+4. Watch **Brain waves**: the description and the band columns; alpha usually rises while your eyes are closed.
 5. Type a label and press **Add marker** whenever something changes.
 6. Press **Stop** when you're done.
 

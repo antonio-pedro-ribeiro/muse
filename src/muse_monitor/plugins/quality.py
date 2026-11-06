@@ -69,7 +69,7 @@ class Quality(Analyzer):
     def views(self) -> list[ViewSpec]:
         c = self.config
         return [
-            ViewSpec(id="electrodes", title="Electrode contact", section="quality", type="electrodes",
+            ViewSpec(id="electrodes", title="Signal strength", section="quality", type="electrodes",
                      streams=["mask"],
                      description="Your head seen from above, nose at the top: each dot is an electrode where it "
                                  "touches you (TP9 and TP10 behind the ears, AF7 and AF8 on the forehead; the grey "

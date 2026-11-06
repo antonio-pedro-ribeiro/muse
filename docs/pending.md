@@ -45,8 +45,9 @@ For each session:
 
 1. On **Live**, keep the default analyzers, give it a label (for example `m5 day 1`) and press
    **Start session**.
-2. Wait until **Signal quality** shows most electrodes as good. Adjust the headband if not.
-3. Press **Calibrate (2 min)** and follow the prompts: 60 s eyes open, then 60 s eyes closed.
+2. Wait until **Signal strength** (under Electrode signal) shows most electrodes as solid green. Adjust
+   the headband if not.
+3. Press **Calibrate (2 min)** and follow the banner: 60 s eyes open, then 60 s eyes closed.
 4. Then alternate blocks of **2 minutes each**, eyes open, sitting still. Type the label and press
    **Add marker** at the start of every block:
 
@@ -111,6 +112,6 @@ Two small changes would make the comparison fairer. They're **not implemented ye
 
 The same sessions can close two other open items:
 
-- **M1:** confirm the signal quality shows good contact with the headband worn.
+- **M1:** confirm Signal strength shows good contact with the headband worn.
 - **M4:** during one live session in the browser, note CPU use (Task Manager) and whether the charts
   stay smooth.

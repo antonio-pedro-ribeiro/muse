@@ -224,16 +224,25 @@ From top to bottom:
   during a replay.
 - **Calibration banner:** while calibrating, a banner says when to keep your eyes open and when to close
   them, with a countdown, then confirms when the baseline is ready.
-- **Signal check:** a picture of your head seen from above (nose at the top) with each electrode where
-  it touches you: TP9 and TP10 behind the ears, AF7 and AF8 on the forehead, and the reference point
-  between them. Solid green is good contact, half-filled yellow noisy, an empty red ring poor contact,
-  dashed grey no signal. A line underneath says what to adjust, for example *Adjust: TP9 behind the
-  left ear (poor contact)*. Below it, the share of usable electrodes (AUX inputs aren't counted). Check
-  this first.
-- **Right now:** the latest session description (every 30 s) and the current band power. With a trained
-  probe, its output appears here too.
-- **Trends:** band power over the last 2 minutes, and against your baseline once you have calibrated.
-- **Signal:** the filtered EEG traces, how much each electrode's signal varies, and the spectrum.
+- **Electrode signal:**
+  - *Signal strength*: your head seen from above (nose at the top) with each electrode where it
+    touches you: TP9 and TP10 behind the ears, AF7 and AF8 on the forehead, and the reference point
+    between them. Solid green is good contact, half-filled yellow noisy, an empty red ring poor
+    contact, dashed grey no signal. A line underneath says what to adjust, for example *Adjust: TP9
+    behind the left ear (poor contact)*.
+  - *Usable channels*: the share of electrodes with good contact right now (AUX inputs aren't
+    counted). A warning appears when it's under half.
+
+  Check this first.
+- **Brain waves:**
+  - *Session description*: the latest plain-language paragraph (every 30 s).
+  - *Share of power by band*: one column per band (delta, theta, alpha, beta, gamma) with its share
+    of the power right now, its frequency range and a line showing its last 2 minutes, then the band
+    with the largest share. When no electrode has good contact, it says so instead of showing numbers.
+  - *Probe output*, if you use a trained probe.
+- **Trends:** *Relative band power over time* (last 2 minutes), *Band power vs. eyes-open baseline* once
+  you have calibrated, and *Probe output over time* with a probe.
+- **Signal:** the filtered EEG traces, *Signal variation per electrode*, and the spectrum.
 - **Events:** earlier descriptions, calibration, blinks, jaw clenching and movement.
 - **Details** (collapsed): one chip per plugin (green working, yellow degraded, red stopped after an
   error; "dropped" counts chunks an analyzer skipped because it fell behind; the recording never drops
@@ -254,9 +263,9 @@ by label or description. Click a row to open the session.
   controls are off). **Analyze** runs the analyzers over the whole recording and refreshes this page.
   **Export ▾** downloads CSV (zip) or EDF+.
 - **Summary:** length, usable share, data received, blinks per minute and alpha share, then the session
-  description for the whole recording and for each marked or calibration segment. Beside it, the head
-  picture shows each electrode's share of the session with good contact (green 80% or more, yellow
-  50–80%, red ring under 50%).
+  description for the whole recording and for each marked or calibration segment. Beside it, *Signal
+  strength over the session* shows each electrode's share of the session with good contact (green 80%
+  or more, yellow 50–80%, red ring under 50%).
 - **Timeline:** band power over time (after Analyze) and the recorded signal, on one time axis with
   markers as dashed lines. Click a segment chip (for example *eyes closed 01:30–03:00*) to zoom every
   chart to it; *Whole session* zooms back out. Pick the stream (`eeg`, `acc`, `gyro`, `optics`) on the
@@ -344,7 +353,8 @@ signal. Those numbers mean nothing to read directly. To get something useful you
    and better choice for that task, and the model isn't worth running.
 
 4. **Use the probe live or offline.** Add `cbramod` with `head = "eyes.npz"` to a pipeline file
-   ([section 5](#5-pipelines-toml)). The *Probe output* cards then show the probability per label.
+   ([section 5](#5-pipelines-toml)). *Probe output* then shows the probability per label under **Brain
+   waves**, and its line over time under **Trends**.
    A probe only works with the model version, electrodes and window length it was trained with;
    otherwise that analyzer stops with an explanation and the rest of the session continues.
 
@@ -380,7 +390,7 @@ The headband's serial number is stored only as a salted hash. EEG is personal da
 | `device not found` (exit code 3) | Turn the headband on, close the Muse phone app, and remove the headband from Windows Bluetooth settings if it's paired. |
 | `no EEG from Mind Monitor on UDP port 5000` | Check the app's target IP is this computer's address (listed in the message), the port matches, the path prefix is empty, streaming is on, both devices share the Wi-Fi, and the firewall allows UDP 5000. |
 | Connects, then drops immediately | The headband is paired in Windows; remove it there. |
-| Signal quality shows poor contact or noisy | Adjust the band so the forehead and behind-the-ear sensors touch the skin, moisten them, and sit still for a few seconds. |
+| Signal strength (under Electrode signal) shows poor contact or noisy | Adjust the band so the forehead and behind-the-ear sensors touch the skin, moisten them, and sit still for a few seconds. |
 | Many gaps or a low rate in the Streams table | Move closer to the computer and away from other 2.4 GHz devices. About 1–2% loss is normal. |
 | `incomplete` session | The app was killed while recording. The data is readable; run `muse sessions repair ID`. |
 | `cbramod` shows as `unavailable` | Run `uv sync --extra models`. |

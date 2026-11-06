@@ -21,8 +21,8 @@
     marker: "Adds a labelled timestamp to the recording, e.g. \"eyes closed\" or \"breathing exercise\". Markers show as dashed lines in charts, label parts of the session description, and are kept in exports.",
     calibrate: "A 2-minute personal baseline: keep your eyes open and relaxed for 60 s, then closed for 60 s. A banner tells you when to switch. Band power is then also shown relative to this baseline.",
     stop: "Ends the session and finishes writing the recording.",
-    quality: "Check this first. Each electrode is rated by how much its signal varies: green is good contact, yellow noisy, red poor contact or no signal. If contact is poor, the other numbers are not meaningful.",
-    now: "What the signal is doing at the moment: a plain-language description of the last 30 s, and how the power is spread over the frequency bands right now.",
+    quality: "Check this first. Signal strength shows each electrode where it touches your head: solid green is good contact, half-filled yellow noisy, an empty red ring poor contact, dashed grey no signal. Usable channels is the share with good contact right now. If contact is poor, the other numbers are not meaningful.",
+    now: "What the EEG is doing at the moment: how its power is spread over the classic frequency bands (often called brain waves) with their last 2 minutes, and a plain-language description of the last 30 s. Blinks, jaw clenching and movement show up here too, so check Electrode signal and Events. These are measurements, not mental states.",
     trends: "How the measurements change over the last minutes. Cards appear once they have data (for example, the baseline comparison after you calibrate).",
     signal: "The signal itself: the filtered EEG traces and the frequency spectrum.",
     events: "What happened: markers, calibration, blinks, jaw clenching, movement, and all earlier descriptions.",
@@ -54,9 +54,9 @@
     synthetic: ["Test signals", "Made-up EEG with rhythms, blinks and noise, to try the app without a headband."],
   };
   const VIA = { openmuse: "via Bluetooth", mindmonitor: "via Mind Monitor", synthetic: "test signals" };
-  const SECTIONS = { quality: "Signal check", now: "Right now", trends: "Trends", signal: "Signal", events: "Events" };
+  const SECTIONS = { quality: "Electrode signal", now: "Brain waves", trends: "Trends", signal: "Signal", events: "Events" };
   const ORDER = ["quality", "now", "trends", "signal", "events"];
-  const sectionOf = (v) => v.section || ({ text: "now", events: "events", spectrum: "signal", bars: "now",
+  const sectionOf = (v) => v.section || ({ text: "now", events: "events", spectrum: "signal", bars: "now", bands: "now",
     metric: "now", table: "now" }[v.type] || "trends");
 
   const sub = (text, help, tag = "h2") => heading(tag, text, help);
@@ -496,7 +496,7 @@
             segNotes.length ? h("ul", { class: "segments" }, segNotes.map((n) => h("li", {}, n))) : null,
             otherNotes.map((n) => h("p", { class: "muted small" }, n))]
             : h("p", { class: "muted" }, "No description for this session yet: press Analyze (or Replay) to create one.")),
-        contact.length ? h("div", { class: "summary-map" }, heading("h3", "Contact over the session", HELP.contact), mapBox) : null));
+        contact.length ? h("div", { class: "summary-map" }, heading("h3", "Signal strength over the session", HELP.contact), mapBox) : null));
 
     // timeline: one time axis for all charts; segments zoom them
     const raw = streams.filter((s) => !s.id.includes("/") && s.rate > 0)
@@ -550,7 +550,7 @@
 
     // other charts from the analysis (whole session); last-value views (bars, metrics) don't summarise a session
     const available = new Set(streams.map((s) => s.id));
-    const chartCards = views.filter((v) => v !== trendView && !["text", "bars", "metric", "table", "spectrum"].includes(v.type))
+    const chartCards = views.filter((v) => v !== trendView && !["text", "bars", "bands", "metric", "table", "spectrum"].includes(v.type))
       .sort((a, b) => ORDER.indexOf(sectionOf(a)) - ORDER.indexOf(sectionOf(b)))
       .filter((v) => v.type === "events" || v.streams.every((s) => available.has(s)))
       .map((v) => {

@@ -103,11 +103,14 @@ class BandPower(Analyzer):
 
     def views(self) -> list[ViewSpec]:
         return [
-            ViewSpec(id="mean_rel", title="Relative band power", section="now", type="bars", streams=["mean_rel"],
-                     description="Share of the EEG power in each frequency band, averaged over good channels: "
-                                 "delta 1-4 Hz, theta 4-8, alpha 8-13, beta 13-30, gamma 30-45. The bars add up to "
-                                 "about 1. Alpha usually rises with eyes closed; blinks and movement inflate delta. "
-                                 "These are measurements, not mental states.",
+            ViewSpec(id="mean_rel", title="Share of power by band", section="now", type="bands", streams=["mean_rel"],
+                     window_s=120.0,
+                     description="How the EEG power is spread over the classic frequency bands, often called brain "
+                                 "waves: delta 1-4 Hz, theta 4-8, alpha 8-13, beta 13-30, gamma 30-45. Each column is "
+                                 "the band's share right now, averaged over electrodes with good contact (the shares "
+                                 "add up to about 100%); the line under it is the last 2 minutes. Alpha usually rises "
+                                 "with eyes closed; blinks and movement inflate delta, jaw and forehead muscles "
+                                 "inflate beta and gamma. These are measurements, not mental states.",
                      y=Axis(label="relative power", min=0, max=1)),
             ViewSpec(id="trend", title="Relative band power over time", section="trends", type="timeseries",
                      description="The same relative band powers over the last 2 minutes, updated every "

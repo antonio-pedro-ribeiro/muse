@@ -284,6 +284,72 @@
     container.replaceChildren(list);
   };
 
+  /* ---------- band columns: share per band now (tall column) + its last minutes (sparkline) ---------- */
+  function spark(canvas, values, color) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(40, canvas.clientWidth || 80), hgt = 30;
+    if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(hgt * dpr); }
+    const g = canvas.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, hgt);
+    const pts = values.filter((v) => v != null && isFinite(v));
+    if (pts.length < 2) return;
+    const hi = Math.max(0.05, ...pts) * 1.1;
+    g.strokeStyle = color; g.lineWidth = 1.5; g.beginPath();
+    let pen = false;
+    values.forEach((v, i) => {
+      if (v == null || !isFinite(v)) { pen = false; return; }
+      const x = (i / (values.length - 1)) * (w - 2) + 1, y = hgt - 2 - (v / hi) * (hgt - 4);
+      if (pen) g.lineTo(x, y); else { g.moveTo(x, y); pen = true; }
+    });
+    g.stroke();
+  }
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  R.bands = function (container, spec, store) {
+    const s = store.streams[spec.streams[0]];
+    if (!s || !s.data.length) return empty(container, "waiting for data…");
+    container.querySelector(".empty")?.remove();
+    const names = s.info.channels, ranges = (s.info.meta && s.info.meta.bands) || {}, colors = palette();
+    let wrap = container.querySelector(".bands");
+    if (!wrap || wrap.dataset.key !== names.join("|")) {
+      wrap = el("div", "bands");
+      wrap.dataset.key = names.join("|");
+      wrap.style.gridTemplateColumns = `repeat(${names.length}, minmax(0, 1fr))`;
+      names.forEach((n, k) => {
+        const col = el("div", "band-col");
+        const track = el("div", "band-track"), fill = el("div", "band-fill");
+        fill.style.background = colors[k % colors.length];
+        track.appendChild(fill);
+        const r = ranges[n];
+        col.append(el("div", "band-value", "–"), track, el("div", "band-name", cap(n)),
+          el("div", "band-range", r ? `${r[0]}–${r[1]} Hz` : ""), el("canvas", "band-spark"));
+        wrap.appendChild(col);
+      });
+      container.replaceChildren(wrap, el("div", "bands-note"));
+    }
+    const row = s.data[s.data.length - 1];
+    const tEnd = s.t[s.t.length - 1];
+    let i0 = s.t.length - 1;
+    while (i0 > 0 && s.t[i0 - 1] >= tEnd - (spec.window_s || 120)) i0--;
+    const ok = row.some((v) => v != null && isFinite(v));
+    [...wrap.children].forEach((col, k) => {
+      const v = row[k], has = v != null && isFinite(v);
+      col.children[0].textContent = has ? `${Math.round(v * 100)}%` : "–";
+      col.children[1].firstChild.style.height = `${has ? Math.max(1, Math.min(100, v * 100)) : 0}%`;
+      col.classList.toggle("off", !has);
+      spark(col.children[4], s.data.slice(i0).map((r) => r[k]), colors[k % colors.length]);
+    });
+    const note = container.querySelector(".bands-note");
+    if (!ok) {
+      note.textContent = "No band power right now: no electrode has good contact (see Electrode signal).";
+      note.className = "bands-note warn";
+    } else {
+      const k = row.reduce((best, v, i) => (isFinite(v) && v > (isFinite(row[best]) ? row[best] : -1) ? i : best), 0);
+      note.textContent = `Largest share: ${names[k]} (${Math.round(row[k] * 100)}%).`;
+      note.className = "bands-note";
+    }
+  };
+
   /* ---------- electrode map: the head from above, nose up, the wearer's left on the left ----------
      Status is shown by shape as well as colour: solid = good, half = noisy/fair, ring = poor, dashed = none. */
   const LAYOUT = {   // x right, y forward, in head radii

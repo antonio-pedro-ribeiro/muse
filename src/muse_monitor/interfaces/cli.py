@@ -286,13 +286,13 @@ class Dashboard:
             pct = y.get("unit") == "%"
             return Text("  ".join((f"{round(x * 100)}%" if pct and x is not None else fmt_num(x)) for x in row),
                         style="bold")
-        if v["type"] in ("bars", "table"):
+        if v["type"] in ("bars", "bands", "table"):
             t = Table.grid(padding=(0, 1))
             hi = y.get("max") or max([x for x in row if x is not None and x == x] or [1.0]) or 1.0
             lo = y.get("min") or 0.0
             for name, x in zip(self._channels(s), row):
                 bar = ""
-                if v["type"] == "bars" and x is not None and x == x:
+                if v["type"] in ("bars", "bands") and x is not None and x == x:
                     frac = max(0.0, min(1.0, (x - lo) / ((hi - lo) or 1)))
                     bar = "█" * int(frac * 24)
                 style = ""

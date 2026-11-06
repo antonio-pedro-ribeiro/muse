@@ -127,6 +127,20 @@ td.summary-cell { max-width: 420px; color: var(--muted); font-size: 12px; }
 @media (max-width: 900px) { .live-top { grid-template-columns: 1fr; } }
 
 /* electrode map */
+/* band columns */
+.bands { display: grid; gap: 10px; align-items: end; }
+.band-col { display: grid; justify-items: center; gap: 4px; min-width: 0; }
+.band-col.off { opacity: .45; }
+.band-value { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.band-track { width: 70%; max-width: 56px; height: 170px; background: var(--grid); border-radius: 8px;
+  display: flex; align-items: flex-end; overflow: hidden; }
+.band-fill { width: 100%; height: 0; border-radius: 8px 8px 0 0; transition: height .35s ease; }
+.band-name { font-weight: 600; }
+.band-range { font-size: 11px; color: var(--muted); white-space: nowrap; }
+canvas.band-spark { width: 100%; height: 30px; display: block; }
+.bands-note { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: center; }
+.bands-note.warn { color: var(--text); font-weight: 600; }
+@media (max-width: 600px) { .band-track { height: 120px; } .band-value { font-size: 16px; } .band-range { font-size: 10px; } }
 .headmap { display: grid; justify-items: center; gap: 6px; }
 .headmap-svg { width: 100%; max-width: 280px; height: auto; }
 .headmap-summary { font-size: 13px; text-align: center; } .headmap-summary.warn { color: var(--text); font-weight: 600; }

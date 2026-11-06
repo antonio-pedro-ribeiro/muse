@@ -73,6 +73,17 @@ def test_parts_are_readable_and_repair_compacts(tmp_path: Path):
     assert len(storage.read_stream(tmp_path, "eeg")[1]) == 768
 
 
+def test_stats_rebuilt_from_parts_after_crash(tmp_path: Path):
+    info = StreamInfo("eeg", "eeg", ["a"], ["uV"], 256.0)
+    w = storage.StreamWriter(storage.stream_base(tmp_path, "eeg"), info)
+    w.append(Chunk("eeg", np.zeros(256), 1e9 + np.arange(256) / 256, 0))
+    w.append(Chunk("eeg", np.zeros(256), 1e9 + (np.arange(256) + 266) / 256, 266))     # 10 samples lost
+    w.flush()
+    st = storage.stats_from_files(tmp_path)["eeg"]
+    assert (st["samples"], st["gaps"], st["missing_samples"], st["duplicates"]) == (512, 1, 10, 0)
+    assert st["effective_rate"] == pytest.approx(511 / (521 / 256), abs=1e-3)
+
+
 def test_export_csv_and_edf(data_dir: Path):
     f, sid = record(data_dir, seconds=4)
     files = f.export(sid, "csv")

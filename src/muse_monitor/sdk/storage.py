@@ -146,6 +146,26 @@ def list_streams(session_dir: Path) -> list[StreamInfo]:
     return list(out.values())
 
 
+def stats_from_files(session_dir: Path) -> dict[str, dict[str, int | float]]:
+    """Per raw stream statistics rebuilt from the files (for sessions that ended without writing them)."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    out: dict[str, dict[str, int | float]] = {}
+    for info in list_streams(session_dir):
+        files = _files(stream_base(session_dir, info.id))
+        if "/" in info.id or not files:
+            continue
+        table = pa.concat_tables([pq.read_table(f, columns=["t", "index"]) for f in files])
+        t, idx = table.column("t").to_numpy(), table.column("index").to_numpy()
+        steps = np.diff(idx) if len(idx) > 1 else np.empty(0, idx.dtype)
+        span = float(t[-1] - t[0]) if len(t) > 1 else 0.0
+        out[info.id] = {"samples": len(t), "gaps": int((steps > 1).sum()),
+                        "missing_samples": int((steps[steps > 1] - 1).sum()), "duplicates": int((steps < 1).sum()),
+                        "effective_rate": round((len(t) - 1) / span, 3) if span > 0 else 0.0,
+                        "nominal_rate": info.rate}
+    return out
+
+
 def _jsonl(path: Path) -> list[dict[str, Any]]:
     out = []
     if path.is_file():

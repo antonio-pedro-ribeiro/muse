@@ -34,7 +34,8 @@ CI: `uv run pytest -m "not device"`, `ruff`, `pyright --strict` on `sdk/` and `k
 
 | Milestone | State |
 |---|---|
-| M0–M2 | Done. Verified with synthetic data; the 30 min real-device check for M1 is still to do |
+| M0, M2 | Done. Verified with synthetic data |
+| M1 | Real device works (Muse S Athena, fw 3.1.19, preset p1041, 2026-11-06). EEG 256.4 Hz (within 1%), ~0.6% EEG samples missing, every gap reported as `stream.gap`. Readable after a forced kill (`taskkill /F /T`): all streams replay, ~1 s lost, `sessions show` rebuilds stats from files. Fixed on hardware: settle backlog decoded out of order (false gaps, wrong rate); CLI crash on non-UTF-8 consoles. **Pending:** the 30 min run's results; signal quality not checked yet (headband not worn) |
 | M3 | Done. Every CLI command was run against `muse serve` with `--server` |
 | M4 | Done. Smoke-tested in Chromium; CPU/latency targets not measured yet |
 | M5 | Not started (needs real recordings to evaluate the probe) |

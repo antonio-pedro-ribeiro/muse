@@ -30,6 +30,9 @@ plugins_app = typer.Typer(no_args_is_help=True, help="Inspect installed plugins.
 sessions_app = typer.Typer(no_args_is_help=True, help="Recorded sessions.")
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(sessions_app, name="sessions")
+for _stream in (sys.stdout, sys.stderr):     # Windows pipes default to cp1252, which can't print "●"
+    if hasattr(_stream, "reconfigure") and (_stream.encoding or "").lower() not in ("utf-8", "utf8"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 console = Console()
 err = Console(stderr=True)
 

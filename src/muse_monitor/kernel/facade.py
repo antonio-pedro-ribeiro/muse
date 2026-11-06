@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import re
 import time
@@ -26,6 +27,8 @@ from .errors import Busy, ConfigError, KernelError, NotFound
 from .ids import ulid
 from .registry import PluginRegistry
 from .session import Session
+
+log = logging.getLogger("muse.facade")
 
 try:
     APP_VERSION = version("muse-monitor")
@@ -201,7 +204,14 @@ class KernelFacade:
             if not hits:
                 raise NotFound(f"unknown session {session_id!r}")
             path = hits[0]
-        return self._from_disk(path)
+        d = self._from_disk(path)
+        if d["status"] == "incomplete":            # killed: its saved stats may be stale or missing
+            from ..sdk.storage import stats_from_files
+            try:
+                d["stats"] = {**d.get("stats", {}), **stats_from_files(path.parent)}
+            except Exception as exc:
+                log.warning("could not rebuild stats for %s: %s", d["id"], exc)
+        return d
 
     def _from_disk(self, path: Path) -> dict[str, Any]:
         d = SessionInfo.model_validate_json(path.read_text(encoding="utf-8")).model_dump(mode="json")

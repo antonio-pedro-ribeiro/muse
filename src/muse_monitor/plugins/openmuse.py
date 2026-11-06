@@ -115,6 +115,7 @@ class OpenMuseSource(Source):
         self._states: dict[int, _Stream] = {}
         self._declared: dict[str, StreamInfo] | None = None
         self._pending: list[tuple[dict[str, list[dict]], float]] = []
+        self._live = False             # False: queue packets in _pending until run() has drained them in order
         self._seen: set[int] = set()
         self._control = ""
         self._errors = 0
@@ -136,6 +137,7 @@ class OpenMuseSource(Source):
         loop = asyncio.get_running_loop()
         self._stop.clear()
         self._disconnected.clear()
+        self._live = False
         self._client = bleak.BleakClient(
             address, timeout=cfg.connect_timeout,
             disconnected_callback=lambda _c: loop.call_soon_threadsafe(self._disconnected.set))
@@ -208,12 +210,13 @@ class OpenMuseSource(Source):
             arrival = time.time()
             try:
                 parsed = parse_message(f"{get_utc_timestamp()}\t{uuid}\t{data.hex()}")
-                if self._declared is None:
-                    for subs in parsed.values():
-                        self._seen.update(s["tag_byte"] for s in subs)
-                    self._pending.append((parsed, arrival))
-                else:
+                if self._live:
                     self._handle(parsed, arrival)
+                else:
+                    if self._declared is None:
+                        for subs in parsed.values():
+                            self._seen.update(s["tag_byte"] for s in subs)
+                    self._pending.append((parsed, arrival))
             except Exception as exc:   # never let a bad packet kill the BLE callback
                 self._errors += 1
                 if self._errors <= 5:
@@ -257,9 +260,12 @@ class OpenMuseSource(Source):
         self.ctx.emit(Chunk(stream, data, t, index))
 
     async def run(self) -> None:
+        # BLE callbacks run on this event loop, so nothing can arrive between the drain and switching to live:
+        # packets are handled strictly in arrival order (out-of-order handling looks like 255-subpacket gaps).
         pending, self._pending = self._pending, []
         for parsed, arrival in pending:
             self._handle(parsed, arrival)
+        self._live = True
         stop = asyncio.create_task(self._stop.wait())
         gone = asyncio.create_task(self._disconnected.wait())
         await asyncio.wait({stop, gone}, return_when=asyncio.FIRST_COMPLETED)

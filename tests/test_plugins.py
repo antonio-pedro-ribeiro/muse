@@ -141,3 +141,27 @@ def test_every_builtin_option_is_described(name):
     assert not [k for k, v in props.items() if not v.get("description")]
     assert set(m.config_defaults) == {k for k, f in PluginRegistry(paths=[])._classes[name].Config.model_fields.items()
                                       if not f.is_required()}
+
+
+def test_openmuse_handles_settle_backlog_before_new_packets(monkeypatch):
+    """Packets queued during settle must be decoded before packets arriving after open() (found on real hardware:
+    the backlog was decoded late and its wrapped subpacket indices looked like ~250-subpacket gaps)."""
+    import OpenMuse
+
+    from muse_monitor.plugins.openmuse import OpenMuseSource
+
+    def eeg(sub):
+        return {"EEG": [{"tag_byte": 0x12, "subpkt_index": sub, "data": np.zeros((2, 8))}]}
+    monkeypatch.setattr(OpenMuse, "parse_message", lambda line: eeg(int(line.split("\t")[2], 16)))
+    ctx = CaptureContext("live")
+    src = OpenMuseSource(OpenMuseSource.Config(), ctx)
+    cb = src._make_callback("273e0013")
+    for i in range(3):                          # settle: queued, streams not declared yet
+        cb(None, bytearray([i]))
+    src._declared = {s.id: s for s in src._declare()}
+    cb(None, bytearray([3]))                     # after open() returned, before run() drained the backlog
+    src._stop.set()
+    asyncio.run(src.run())
+    cb(None, bytearray([4]))
+    assert [c.first_index for c in ctx.chunks["eeg"]] == [0, 2, 4, 6, 8]
+    assert src.health().counters["lost_subpackets_0x12"] == 0

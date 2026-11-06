@@ -42,7 +42,10 @@ has no packet counters or device timestamps, so timing is rebuilt and gaps are o
 ## Repository layout and commands
 
 - Python 3.13 project managed with **uv** (`pyproject.toml`, `uv.lock`). OpenMuse is installed from its GitHub
-  repository (see `[tool.uv.sources]`).
+  repository, pinned by commit in `[project.dependencies]`. Don't change it to a bare `openmuse`: PyPI's
+  `openmuse` is a different project. To update OpenMuse, change the commit and run `uv lock`.
+- CI/CD (`.github/workflows/`): lint, type check, tests on Ubuntu and Windows, wheel build and install test;
+  a `vX.Y.Z` tag publishes a GitHub Release. See `docs/development.md`.
 - `src/muse_monitor/check.py`: the `muse-check` connectivity CLI.
 
 ```

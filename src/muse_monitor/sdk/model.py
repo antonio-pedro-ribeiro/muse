@@ -114,7 +114,7 @@ class ModelAnalyzer(Analyzer):
         target = cls.weights_dir(config)
         if Path(config.weights).is_dir():
             return target
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import snapshot_download  # pyright: ignore[reportMissingImports]  ([models] extra)
         snapshot_download(config.weights, revision=config.revision, local_dir=target)
         return target
 

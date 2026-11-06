@@ -4,21 +4,113 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  workflow_call:          # the release workflow runs the same checks before publishing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHON_VERSION: "3.13"
+  UV_VERSION: "0.11.6"
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  check:
+  lint:
+    name: Lint and type check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.13"
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - name: Install (lockfile must be up to date)
+        run: uv sync --locked
+      - name: Ruff
+        run: uv run ruff check --output-format=github src tests scripts
+      - name: Pyright (kernel and SDK)
+        run: uv run pyright
+
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]     # Windows is the main platform (BLE via WinRT)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
       - name: Install
         run: uv sync --locked
-      - name: Lint
-        run: uv run ruff check src tests
-      - name: Type check (kernel and SDK)
-        run: uv run pyright
-      - name: Tests (no headband)
-        run: uv run pytest -m "not device"
+      - name: Pytest (no headband; scikit-learn added for the train-probe test, torch left out)
+        run: uv run --with scikit-learn pytest -m "not device" -ra --junitxml=pytest-${{ matrix.os }}.xml
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-${{ matrix.os }}
+          path: pytest-${{ matrix.os }}.xml
+
+  build:
+    name: Build distributions
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build sdist and wheel (the wheel is built from the sdist)
+        run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  smoke:
+    name: Install wheel (${{ matrix.os }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Install the wheel into a clean environment and smoke-test it
+        run: |
+          venv="$RUNNER_TEMP/smoke"
+          uv venv --python "$PYTHON_VERSION" "$venv"
+          uv pip install --python "$venv" dist/*.whl
+          if [ "$RUNNER_OS" = Windows ]; then bin="$(cygpath -u "$venv/Scripts")"; else bin="$venv/bin"; fi
+          version="$(uv version --short)"
+          cd "$RUNNER_TEMP"          # away from the source tree, so only the installed package is importable
+          PATH="$bin:$PATH" "$bin/python" "$GITHUB_WORKSPACE/scripts/smoke_test.py" "$version"

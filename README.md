@@ -59,6 +59,7 @@ uv run muse run --source mindmonitor           # data relayed by the Mind Monito
 | [docs/getting-started.md](docs/getting-started.md) | New users: concepts, and your first session step by step |
 | [docs/usage.md](docs/usage.md) | Every command, option and page of the web interface; pipeline files; troubleshooting |
 | [docs/pending.md](docs/pending.md) | How to complete the open AI-model milestone with your own recordings |
+| [docs/development.md](docs/development.md) | Contributors: checks, CI pipeline, releasing |
 | [spec/architecture.md](spec/architecture.md) | Goals, principles, architecture and decisions |
 | [spec/plugins.md](spec/plugins.md) · [spec/data.md](spec/data.md) · [spec/interfaces.md](spec/interfaces.md) | Plugin contracts, data and storage, CLI/API/web interfaces |
 | [spec/roadmap.md](spec/roadmap.md) | Milestones and their status |
@@ -98,7 +99,11 @@ web UI performance. See [spec/roadmap.md](spec/roadmap.md).
 ```
 uv sync --extra models           # include the AI model dependencies
 uv run pytest                    # the test suite (hardware tests are marked `device` and skipped)
+uv run ruff check src tests scripts && uv run pyright     # what CI checks besides the tests
 ```
+
+CI runs on every pull request and push to `main`. Releases are made by pushing a version tag. See
+[docs/development.md](docs/development.md).
 
 Tests run on synthetic signals with known content (a 10 Hz sine must show up as alpha) and on real
 recordings where noted. Conventions, device facts and lessons learned are in [AGENTS.md](AGENTS.md).

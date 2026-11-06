@@ -38,6 +38,19 @@ for _stream in (sys.stdout, sys.stderr):     # Windows pipes default to cp1252, 
 console = Console()
 err = Console(stderr=True)
 
+
+def _version(value: bool) -> None:
+    if value:
+        from ..kernel import APP_VERSION
+        print(f"muse-monitor {APP_VERSION}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _root(version: Annotated[bool, typer.Option("--version", callback=_version, is_eager=True,
+                                                help="Show the version and exit.")] = False) -> None:
+    """Monitor and analyze Muse EEG recordings."""
+
 JsonOpt = Annotated[bool, typer.Option("--json", help="Machine-readable output.")]
 ServerOpt = Annotated[Optional[str], typer.Option("--server", envvar="MUSE_SERVER",
                                                   help="Use a running `muse serve` (http://host:port).")]

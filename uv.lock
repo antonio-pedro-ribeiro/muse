@@ -1648,7 +1648,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'models'", specifier = ">=0.24" },
     { name = "numpy", specifier = ">=2" },
-    { name = "openmuse", git = "https://github.com/DominiqueMakowski/OpenMuse" },
+    { name = "openmuse", git = "https://github.com/DominiqueMakowski/OpenMuse?rev=a9be252188321e269537eabf609bc207be293f8c" },
     { name = "pyarrow", specifier = ">=17" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "python-osc", specifier = ">=1.8" },
@@ -1918,7 +1918,7 @@ wheels = [
 [[package]]
 name = "openmuse"
 version = "0.1.8"
-source = { git = "https://github.com/DominiqueMakowski/OpenMuse#a9be252188321e269537eabf609bc207be293f8c" }
+source = { git = "https://github.com/DominiqueMakowski/OpenMuse?rev=a9be252188321e269537eabf609bc207be293f8c#a9be252188321e269537eabf609bc207be293f8c" }
 dependencies = [
     { name = "bleak" },
     { name = "matplotlib" },

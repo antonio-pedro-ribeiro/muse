@@ -11,7 +11,9 @@ dependencies = [
     "fastapi>=0.115",
     "httpx>=0.27",
     "numpy>=2",
-    "openmuse",
+    # pinned by commit: the "openmuse" on PyPI is a different project, so the name alone would
+    # install the wrong package from a built wheel
+    "openmuse @ git+https://github.com/DominiqueMakowski/OpenMuse@a9be252188321e269537eabf609bc207be293f8c",
     "pyarrow>=17",
     "pydantic>=2.7",
     "python-osc>=1.8",
@@ -53,9 +55,6 @@ export = "muse_monitor.plugins.export:Export"
 [build-system]
 requires = ["uv_build>=0.11.6,<0.12.0"]
 build-backend = "uv_build"
-
-[tool.uv.sources]
-openmuse = { git = "https://github.com/DominiqueMakowski/OpenMuse" }
 
 [dependency-groups]
 dev = [

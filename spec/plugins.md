@@ -23,8 +23,6 @@ class Context:                            # the plugin's only handle on the kern
     log: logging.Logger
     def emit(self, item: Chunk | Event) -> None
     def data_dir(self) -> Path            # per-plugin cache (model weights, …)
-    def register_ingest(self, name: str, handler: Callable[[bytes, dict], Awaitable[None]]) -> None
-        # exposed by the HTTP interface as POST /api/v1/ingest/{name}
 ```
 
 ## 2. Source
@@ -145,13 +143,12 @@ A plugin can appear more than once with distinct `id`s. Stream ids are namespace
 | source | `synthetic` | Sines + noise + fake blinks; tests and demos |
 | source | `openmuse` | Muse S Athena over BLE (ports `check.py`) |
 | source | `replay` | Recorded session as a source; powers offline analysis |
-| source | `android-http` | Phone stream via `register_ingest`. Blocked on format questions in `AGENTS.md` |
 | analyzer | `quality` | Per-channel contact/noise → `quality/mask` + views |
 | analyzer | `filter` | 1–40 Hz band-pass + 50/60 Hz notch, for display |
 | analyzer | `baseline` | Eyes-open/closed calibration → per-session normalization |
 | analyzer | `bandpower` | Welch → absolute, relative and baseline-normalized band powers |
 | analyzer | `artifacts` | Blink/jaw (frontal amplitude) and motion (IMU) → events |
-| analyzer | `zuna` / `cbramod` | `ModelAnalyzer` wrappers (`[models]` extra) |
+| analyzer | `cbramod` | `ModelAnalyzer` for `braindecode/cbramod-pretrained` (`[models]` extra); resamples to the model's rate, maps channels by position |
 | sink | `recorder` | Parquet, `critical = True` |
 | sink | `export` | CSV / EDF+ at session close |
 

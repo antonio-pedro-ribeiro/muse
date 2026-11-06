@@ -14,8 +14,8 @@
 |---|---|---|
 | **M3 API** | REST, WebSocket, `muse serve`, `--server`, token auth | All CLI commands work via `--server` |
 | **M4 Web UI** | Live, Sessions, Session, Plugins pages | 4 ch EEG + views stay smooth on a mid-range laptop (measure CPU and latency here, then set targets) |
-| **M5 Models** | `ModelAnalyzer`, `zuna` or `cbramod`, `models pull`, `train-probe` | Probe beats the band-power baseline under session-held-out CV, or the model plugin is not recommended |
-| **M6 Extras** | `artifacts`, `export` (CSV/EDF+), `android-http` | Fixture capture in `samples/` drives parser tests |
+| **M5 Models** | `ModelAnalyzer`, `cbramod`, `models pull`, `train-probe` | Probe beats the band-power baseline under session-held-out CV, or the model plugin is not recommended |
+| **M6 Extras** | `artifacts`, `export` (CSV/EDF+) | EDF+ opens in MNE with annotations |
 
 ## 3. Testing
 
@@ -30,10 +30,11 @@
 
 CI: `uv run pytest -m "not device"`, `ruff`, `pyright --strict` on `sdk/` and `kernel/`.
 
-## 4. Open questions
+## 4. Decided
 
-1. **Device link (blocks M1 scope).** `AGENTS.md` describes Android → HTTP, while `check.py` uses
-   direct BLE via OpenMuse. Proposal: `openmuse` first, `android-http` once the format is known.
-2. **Default model.** ZUNA (Apache-2.0) or CBraMod (BSD-3). REVE (license "other") and LUNA
-   (CC-BY-ND) are excluded from the built-ins unless their licenses permit it.
-3. **Persist live derived streams?** Proposed default: no, regenerate them offline.
+- **Device link:** direct BLE via OpenMuse (`openmuse` source). Phone/HTTP ingestion is out of scope.
+- **Built-in model:** CBraMod.
+
+## 5. Open questions
+
+1. **Persist live derived streams?** Proposed default: no, regenerate them offline.

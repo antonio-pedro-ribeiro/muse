@@ -1,6 +1,6 @@
 # Muse Monitor: Application Spec
 
-Status: **draft v0.2**
+Status: **draft v0.3**
 
 | File | Contents |
 |---|---|
@@ -40,9 +40,9 @@ nothing about Muse.
 │ KERNEL   PluginRegistry · StreamBus · SessionManager · Config    │
 └───────┬───────────────────────┬──────────────────────┬──────────┘
    SOURCE ──streams──▶ ANALYZER(s) ──streams──▶ SINK(s)
-   openmuse            quality, filter,          recorder
+   openmuse (BLE)      quality, filter,          recorder
    replay, synthetic   bandpower, artifacts,     export
-   android-http        model (zuna/cbramod)
+                       baseline, cbramod
 ```
 
 - **PluginRegistry** discovers plugins (entry points and `./plugins/`), checks `api_version`, and
@@ -93,7 +93,9 @@ A plugin whose extra isn't installed is listed as `unavailable` with an install 
 | Worker thread per CPU-bound plugin | Keeps state (filters, model weights) in place | Process pool: state can't move cheaply, chunks get copied |
 | Declarative views | One description for web, CLI and reports | Per-plugin frontend code |
 | Replay for offline | One code path, live and offline results agree | Separate batch API |
-| Ingest hook instead of plugin HTTP routes | Kernel and SDK stay free of web frameworks | `ctx.http` router |
+| Direct BLE via OpenMuse | Already working in `check.py`; one less hop, real packet counters for gap detection | Android app → HTTP: extra app, unknown format, more latency |
+| CBraMod as the built-in model | 4.9M params (CPU real time), BSD-3, already in braindecode | ZUNA: 382M params, unproven on 4 dry channels; REVE/LUNA: restrictive licenses |
+| No plugin HTTP routes or ingest hook | Nothing needs push ingestion with BLE; kernel stays framework-free | `ctx.http`; add an ingest hook only if a push source appears |
 
 ## 6. SDK compatibility
 

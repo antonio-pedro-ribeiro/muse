@@ -14,7 +14,6 @@ class KernelFacade:
     def subscribe(self, id, streams, max_hz) -> AsyncIterator[Chunk | Event]
     def views(self, id) -> list[ViewSpec]
     async def add_marker(self, id, label: str) -> Event
-    async def ingest(self, name: str, body: bytes, headers: dict) -> None
 ```
 
 ## 1. CLI (`muse`)
@@ -33,7 +32,7 @@ muse run [-c pipeline.toml] [--no-record] [--duration 10m] [--calibrate]
 muse sessions list | show ID | export ID --format csv|edf | repair ID
 muse analyze ID [-c pipeline.toml] [--report out.html]       # offline replay
 muse models pull PLUGIN
-muse train-probe --plugin zuna --sessions ID... --label-from markers --out head.pt
+muse train-probe --plugin cbramod --sessions ID... --label-from markers --out head.pt
          # cross-validation holds out whole sessions; prints per-fold scores
 muse serve [--host 127.0.0.1] [--port 8765]
 ```
@@ -54,7 +53,6 @@ Exit codes: `0` ok, `1` runtime error, `2` usage/config error, `3` device not fo
 | `GET /sessions/{id}/streams/{stream}?from=&to=&format=json\|csv` | Data slice |
 | `GET /sessions/{id}/events` | Events |
 | `POST /sessions/{id}/analyses` → `GET /jobs/{id}` | Offline run |
-| `POST /ingest/{name}` | Data from push sources (e.g. Android) |
 
 Errors use RFC 9457 problem JSON.
 

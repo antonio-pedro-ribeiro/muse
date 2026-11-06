@@ -9,19 +9,19 @@ Build an application that **monitors and analyzes EEG recordings from a Muse S A
 Data path:
 
 ```
-Muse S Athena ──BLE 5.3──▶ Android app (phone) ──HTTP stream──▶ this application
-                                                               ├─ ingest & buffer
-                                                               ├─ live monitoring (signal quality, band power)
-                                                               ├─ persistent recording storage
-                                                               └─ offline analysis & reports
+Muse S Athena ──BLE 5.3 (OpenMuse)──▶ this application
+                                       ├─ ingest & buffer
+                                       ├─ live monitoring (signal quality, band power)
+                                       ├─ persistent recording storage
+                                       └─ offline analysis & reports
 ```
 
-The headband never talks to this application directly. The Android app owns the Bluetooth connection and forwards
-samples over HTTP. This application is the **receiver, storage and analysis** side.
+**Decision:** the application connects to the headband directly over BLE using OpenMuse (see
+`src/muse_monitor/check.py`). No phone app in the path. The architecture is specified in `spec/`.
 
 ### Goals
 
-1. **Ingest**: accept the Android app's HTTP stream reliably (reconnects, gaps, out-of-order or duplicate packets).
+1. **Ingest**: receive the BLE stream reliably (reconnects, gaps, out-of-order or duplicate packets).
 2. **Monitor live**: show raw traces, per-channel signal quality (contact/noise), band powers (delta, theta, alpha,
    beta, gamma), battery and connection state.
 3. **Record**: store every session losslessly with timestamps and device/preset metadata, in an open format
@@ -33,8 +33,8 @@ samples over HTTP. This application is the **receiver, storage and analysis** si
 
 - Medical diagnosis. This is a consumer device and the outputs are not clinical. Do not word UI text or reports as
   diagnoses.
-- Re-implementing the Bluetooth link on the desktop/server side. If that's ever needed, use OpenMuse (see
-  references) instead of writing a new BLE stack.
+- Writing our own BLE stack. Use OpenMuse for connection and packet decoding.
+- Receiving data from a phone app (HTTP/OSC). Revisit only if a concrete need appears.
 
 ## Device facts: Muse S Athena
 
@@ -66,7 +66,7 @@ These come from the OpenMuse and muse-rs projects, which reverse-engineered the 
 **Implication for this codebase:** never hard-code a channel count. Read channel names, counts and sample rates from
 the stream metadata (or infer them from the payload) and store them with each recording.
 
-### BLE layer (for reference only; the Android app handles it)
+### BLE layer (handled by OpenMuse; reference)
 
 - GATT characteristics are in the `273e00xx-…` family. Athena multiplexes all sensors onto one characteristic
   (`273e0013`). Control/commands go through `273e0001`.
@@ -76,25 +76,12 @@ the stream metadata (or infer them from the payload) and store them with each re
 - Athena packets carry no reliable per-sample timestamps. Timestamps are assigned on the receiving side, so expect
   clock jitter and reconstruct times from the sample rate and packet counters where possible.
 
-## The HTTP stream from Android: open questions
-
-Before writing the ingest layer, confirm these points with the user or from a captured sample:
-
-- [ ] **Which Android app** does the streaming (its own app, Mind Monitor, Muse app, something custom)?
-      Mind Monitor, the best-known third-party app, documents **OSC over UDP** (default port 5000), not HTTP. If the
-      app actually uses OSC, the ingest layer must be a UDP/OSC listener.
-- [ ] Direction: does the phone **POST** to our server, or do **we poll / hold open a GET** (chunked, SSE, WebSocket)?
-- [ ] Payload format: JSON, CSV lines, binary, OSC bundles? Raw samples or pre-computed band powers?
-- [ ] Which timestamps are present (phone clock, sample index), and what are the batching and latency?
-- [ ] Which preset is active (sets channel count) and is that sent in the stream?
-- [ ] Network: same LAN/Wi-Fi? Is authentication or TLS needed?
-
-Save a short real capture under `samples/` (anonymized) as soon as one exists and build parsers and tests from it.
+Save short real captures under `samples/` (anonymized) and build parsers and tests from them.
 
 ## Engineering conventions
 
-- **Language/stack**: not chosen yet. Python is the default recommendation because the ecosystem fits (MNE-Python,
-  SciPy, mne-lsl, OpenMuse). Record the decision here once it's made.
+- **Language/stack**: Python 3.13 + uv. Microkernel with source/analyzer/sink plugins; see `spec/`. Built-in ML
+  model: CBraMod (via braindecode, `[models]` extra).
 - **Keep raw data**: always store the unmodified incoming samples. Filtering and derived features are separate,
   reproducible steps. Never overwrite raw data.
 - **Units and metadata**: store µV for EEG and declare the units of every other stream. Each recording stores the

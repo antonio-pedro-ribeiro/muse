@@ -1,112 +1,98 @@
-# Data model and storage
+# Data
 
-## 1. Core types (`muse_monitor.sdk.types`)
+## 1. Types (`muse_monitor.sdk`)
 
 ```python
 @dataclass(frozen=True)
 class StreamInfo:
-    id: str                    # "eeg", "acc", "bandpower/eeg_rel" (namespaced by producer)
-    kind: str                  # eeg | optics | acc | gyro | ppg | battery | derived | embedding | score
-    channels: list[str]        # ["TP9","AF7","AF8","TP10"] — never assumed, always declared
-    units: list[str]           # per channel: "uV", "g", "deg/s", "%", "uV^2/Hz", "1"
-    rate: float                # nominal Hz; 0.0 = irregular
-    dtype: str = "float32"
-    producer: str = ""         # plugin instance id
-    meta: dict = field(default_factory=dict)   # e.g. {"preset":"p1041","scale":0.0885}
+    id: str                       # "eeg", "bandpower/eeg_rel"
+    kind: str                     # eeg | optics | acc | gyro | battery | derived | embedding | score | mask
+    channels: list[str]
+    units: list[str]              # per channel: "uV", "g", "deg/s", "%", "1"
+    rate: float                   # nominal Hz; 0.0 = irregular
+    positions: dict[str, tuple[float, float, float]] | None = None  # metres, MNE head frame
+    meta: dict = field(default_factory=dict)   # preset, scale factor, raw dtype
 
 @dataclass(frozen=True)
 class Chunk:
-    stream: str                # StreamInfo.id
-    data: np.ndarray           # shape (n_samples, n_channels)
-    t: np.ndarray              # shape (n_samples,), float64 UTC seconds (POSIX)
-    first_index: int           # running sample index since stream start (gap detection)
-    received: float            # monotonic clock at arrival (latency/jitter stats)
+    stream: str
+    data: np.ndarray              # (n_samples, n_channels)
+    t: np.ndarray                 # (n_samples,) float64 UTC seconds
+    first_index: int              # sample counter since stream start
 
 @dataclass(frozen=True)
 class Event:
-    type: str                  # "artifact.blink", "source.disconnected", "plugin.failed", "marker"
-    t: float                   # UTC seconds
+    type: str                     # "marker", "artifact.blink", "stream.gap", "plugin.failed", …
+    t: float
     duration: float = 0.0
-    source: str = ""           # plugin instance id
+    source: str = ""
     data: dict = field(default_factory=dict)
 ```
 
 Kernel guarantees per stream:
-- Chunks arrive in order of `first_index`.
-- `first_index` jumps are reported as `stream.gap` events (`{stream, missing_samples, t}`). Gaps are
-  never filled silently.
-- Duplicate chunks (same `first_index`) are dropped and counted.
+- Chunks are in order.
+- A jump in `first_index` emits `stream.gap {stream, missing_samples}`. Gaps are never filled.
+- Duplicate chunks are dropped and counted.
+
+**Positions.** Sources declare electrode positions; for Muse, the standard 10-20 coordinates for
+TP9/AF7/AF8/TP10/FPz from MNE's `standard_1005`. Model analyzers and export use them.
 
 ## 2. Time
 
-- `t` is UTC seconds and is the source's best estimate. Muse Athena has no per-sample timestamps, so
-  the `openmuse` source reconstructs `t` from the sample rate and packet counters, anchored to the
-  receive clock and corrected slowly for drift (linear fit over a sliding 60 s window).
-- `received` uses `time.monotonic()` and is used only for latency, jitter and gap statistics.
-- User markers (`POST /sessions/{id}/markers`, CLI keypress `m`) are `Event(type="marker")`.
+- `t` is UTC. Muse has no per-sample timestamps, so `openmuse` reconstructs them from the sample rate
+  and packet counter, anchored to receive time and corrected for drift (linear fit over 60 s).
+- Gaps and latency are measured with the monotonic clock.
 
-## 3. Session
+## 3. Quality mask
+
+The `quality` analyzer emits `quality/mask`: a `kind="mask"` stream at 1 Hz, with one channel per EEG
+channel. Values: `0` = ok, `1` = poor contact, `2` = noisy, `3` = flat. Analyzers read it via
+`QualityMask` to skip or flag windows. Reports summarize the percentage of usable data per channel.
+
+## 4. Baseline
+
+A session may start with a calibration: 60 s eyes open, then 60 s eyes closed, with markers emitted by
+the CLI or UI. The `baseline` analyzer stores per-channel band powers for each condition in session
+metadata. `bandpower` then also emits values normalized to that baseline. Cross-session trends use
+the normalized values.
+
+## 5. Session
 
 ```python
 class SessionInfo(BaseModel):
-    id: str                      # ULID (sortable by time)
+    id: str                       # ULID
     label: str | None
-    started_at: datetime         # UTC
-    ended_at: datetime | None
     mode: Literal["live", "offline"]
-    parent: str | None           # offline analysis: the recording it was derived from
-    device: DeviceInfo | None    # model, serial (hashed by default), firmware, preset
+    parent: str | None            # offline: source recording
+    started_at: datetime          # UTC
+    ended_at: datetime | None
+    device: DeviceInfo | None     # model, hashed serial, firmware, preset
     streams: list[StreamInfo]
-    pipeline: dict               # full resolved config
-    plugins: dict[str, str]      # instance id -> "name==version"
+    pipeline: dict                # resolved config
+    plugins: dict[str, str]       # instance -> "name==version"
+    baseline: dict | None
+    stats: dict                   # per stream: samples, gaps, dropped, effective rate
     app_version: str
-    stats: dict                  # per stream: samples, gaps, dropped, effective rate
 ```
 
-## 4. Storage layout (recorder sink)
+## 6. Storage
 
 ```
-recordings/                       # gitignored; location set by MUSE_DATA_DIR
-  01JB…XYZ/                       # session id
-    session.json                  # SessionInfo (rewritten at start, every 30 s and at close)
-    raw/
-      eeg.parquet                 # columns: t (float64), index (int64), TP9, AF7, … (float32)
-      acc.parquet
-      gyro.parquet
-      optics.parquet
-      battery.parquet
-    events.jsonl                  # one Event per line, append-only
-    derived/                      # written by offline runs and by live runs if enabled
-      bandpower/eeg_rel.parquet
-      quality/quality.parquet
-    reports/
-      2026-11-06T10-31Z.html
+recordings/<session-id>/          # MUSE_DATA_DIR; gitignored
+  session.json
+  raw/<stream>.parquet            # t, index, one column per channel; write-once
+  events.jsonl
+  derived/<instance>/<stream>.parquet
+  reports/<timestamp>.html
 ```
 
-Rules:
-- Parquet files are written in **row groups every 5 s** (configurable). A crash loses at most the
-  current row group, and previous groups remain readable. On abnormal termination the recorder writes a
-  sidecar `*.partial` marker, and `muse sessions repair` finalizes the footer.
-- `raw/` is write-once. Offline runs only ever write to `derived/` and `reports/`.
-- Each Parquet file stores its `StreamInfo` as JSON in the schema metadata, so a file can be
-  interpreted on its own.
-- EEG is stored in µV after the device's documented scaling. The scaling factor and raw dtype go in
-  `StreamInfo.meta` so the raw counts can be recovered.
+- Parquet row groups are flushed every 5 s. After a crash, at most the last 5 s are lost, and
+  `muse sessions repair` finalizes the file.
+- `StreamInfo` is stored in each Parquet file's schema metadata, so every file describes itself.
+- EEG is stored in µV. The scale factor goes in `meta`, so the raw counts can be recovered.
+- Device serials are hashed with a per-install salt.
 
-## 5. Export
+## 7. Export
 
-| Format | Command | Use |
-|---|---|---|
-| EDF+ | `muse sessions export ID --format edf` | Clinical/legacy tools, EEGLAB |
-| BIDS-EEG | `--format bids --bids-root DIR` | Sharing and research pipelines (via mne-bids) |
-| CSV | `--format csv` | Spreadsheets, quick looks |
-| FIF | `--format fif` | MNE-Python |
-
-Markers and artifact events become EDF+ annotations or BIDS `events.tsv`.
-
-## 6. Privacy
-
-- Device serials are hashed (SHA-256 with a per-install salt) unless `privacy.keep_serials = true`.
-- `recordings/`, `data/` and `plugins/*/data` are in `.gitignore`.
-- No telemetry. Sinks that send data off the machine (`webhook`, a remote `lsl-out`) must be enabled
-  explicitly and are labelled "external" in the UI.
+`muse sessions export ID --format csv|edf`. Markers and events become EDF+ annotations. BIDS and FIF
+can be added later as plugins.

@@ -284,6 +284,98 @@
     container.replaceChildren(list);
   };
 
+  /* ---------- electrode map: the head from above, nose up, the wearer's left on the left ----------
+     Status is shown by shape as well as colour: solid = good, half = noisy/fair, ring = poor, dashed = none. */
+  const LAYOUT = {   // x right, y forward, in head radii
+    TP9: [-0.9, -0.2], AF7: [-0.56, 0.7], AF8: [0.56, 0.7], TP10: [0.9, -0.2], FPZ: [0, 0.9],
+    FP1: [-0.3, 0.9], FP2: [0.3, 0.9], FZ: [0, 0.45], CZ: [0, 0], PZ: [0, -0.45], OZ: [0, -0.9],
+    T7: [-0.95, 0], T8: [0.95, 0], C3: [-0.48, 0], C4: [0.48, 0], O1: [-0.3, -0.9], O2: [0.3, -0.9],
+  };
+  const PLACE = { TP9: "behind the left ear", TP10: "behind the right ear", AF7: "left forehead", AF8: "right forehead",
+    FPZ: "forehead centre" };
+  const STATUS = {
+    good: { word: "good", color: "--level-ok" }, fair: { word: "fair", color: "--level-warn" },
+    noisy: { word: "noisy", color: "--level-warn" }, poor: { word: "poor contact", color: "--level-bad" },
+    none: { word: "no signal", color: "--muted" }, unknown: { word: "no data", color: "--muted" },
+  };
+  const MASK_STATUS = { 0: "good", 1: "poor", 2: "noisy", 3: "none" };
+  const NS = "http://www.w3.org/2000/svg";
+  function svg(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function where(name, positions) {
+    const key = name.toUpperCase();
+    if (LAYOUT[key]) return LAYOUT[key];
+    const p = positions && positions[name];                     // metres, head frame: x right, y forward
+    if (p) { const r = Math.hypot(p[0], p[1]) || 1; const k = Math.min(1, r / 0.095) / r; return [p[0] * k * 0.95, p[1] * k * 0.95]; }
+    return null;
+  }
+  function electrode(g, x, y, status) {
+    const c = cssVar(STATUS[status].color, "#888"), r = 0.15;
+    if (status === "good") svg("circle", { cx: x, cy: y, r, fill: c }, g);
+    else if (status === "noisy" || status === "fair") {
+      svg("circle", { cx: x, cy: y, r, fill: "none", stroke: c, "stroke-width": 0.05 }, g);
+      svg("path", { d: `M ${x - r} ${y} A ${r} ${r} 0 0 0 ${x + r} ${y} Z`, fill: c }, g);   // lower half filled
+    } else svg("circle", { cx: x, cy: y, r: r - 0.02, fill: "none", stroke: c, "stroke-width": 0.06,
+      "stroke-dasharray": status === "poor" ? "none" : "0.06 0.05" }, g);
+  }
+  /** items: [{name, status, caption}]; options: {summary, reference} */
+  function headMap(container, items, options = {}) {
+    const box = el("div", "headmap");
+    const s = svg("svg", { viewBox: "-1.5 -1.32 3 2.62", role: "img", class: "headmap-svg" });
+    const ink = cssVar("--border", "#ccc"), muted = cssVar("--muted", "#777"), text = cssVar("--text", "#222");
+    svg("circle", { cx: 0, cy: 0, r: 1, fill: cssVar("--bg", "#f6f6f6"), stroke: ink, "stroke-width": 0.03 }, s);
+    svg("path", { d: "M -0.13 -0.985 L 0 -1.17 L 0.13 -0.985", fill: "none", stroke: ink, "stroke-width": 0.03 }, s);
+    for (const sx of [-1, 1]) svg("ellipse", { cx: sx * 1.04, cy: 0.12, rx: 0.07, ry: 0.2, fill: "none", stroke: ink, "stroke-width": 0.03 }, s);
+    const placed = items.map((it) => ({ ...it, at: where(it.name, options.positions) })).filter((it) => it.at);
+    if (placed.some((it) => /^(TP9|TP10|AF7|AF8)$/i.test(it.name))) {           // the Muse band and its reference
+      svg("path", { d: "M -0.9 0.2 C -0.95 -1.05, 0.95 -1.05, 0.9 0.2", fill: "none", stroke: cssVar("--grid", "#eee"),
+        "stroke-width": 0.2, "stroke-linecap": "round" }, s);
+      if (options.reference !== false) {
+        svg("path", { d: "M 0 -0.84 L 0.08 -0.74 L 0 -0.64 L -0.08 -0.74 Z", fill: muted }, s);
+        const t = svg("text", { x: 0, y: -0.46, "text-anchor": "middle", "font-size": 0.12, fill: muted }, s);
+        t.textContent = "ref";
+      }
+    }
+    for (const it of placed) {
+      const [x, y] = [it.at[0], -it.at[1]];
+      const g = svg("g", {}, s);
+      const title = svg("title", {}, g);
+      title.textContent = `${it.name}${PLACE[it.name.toUpperCase()] ? " (" + PLACE[it.name.toUpperCase()] + ")" : ""}: ${it.caption || STATUS[it.status].word}`;
+      electrode(g, x, y, it.status);
+      const below = y > -0.3;                                                     // ear electrodes: label underneath
+      const ty = below ? y + 0.33 : y - 0.38;
+      const t1 = svg("text", { x, y: ty, "text-anchor": "middle", "font-size": 0.15, "font-weight": 600, fill: text }, g);
+      t1.textContent = it.name;
+      const t2 = svg("text", { x, y: ty + 0.16, "text-anchor": "middle", "font-size": 0.12, fill: muted }, g);
+      t2.textContent = it.caption || STATUS[it.status].word;
+    }
+    const bad = placed.filter((it) => it.status !== "good");
+    const summary = options.summary || (!placed.length ? "No electrode data yet."
+      : !bad.length ? `All ${placed.length} electrodes have good contact.`
+        : "Adjust: " + bad.map((it) => `${it.name}${PLACE[it.name.toUpperCase()] ? " " + PLACE[it.name.toUpperCase()] : ""} (${STATUS[it.status].word})`).join(", ") + ".");
+    s.setAttribute("aria-label", summary);
+    const legend = el("div", "headmap-legend");
+    for (const st of options.legend || ["good", "noisy", "poor", "none"]) {
+      const m = svg("svg", { viewBox: "-0.2 -0.2 0.4 0.4", width: 12, height: 12 });
+      electrode(m, 0, 0, st);
+      const item = el("span", "legend-item"); item.append(m, document.createTextNode(STATUS[st].word)); legend.appendChild(item);
+    }
+    box.append(s, el("div", "headmap-summary" + (bad.length ? " warn" : ""), summary), legend);
+    container.replaceChildren(box);
+  }
+
+  R.electrodes = function (container, spec, store) {
+    const s = store.streams[spec.streams[0]];
+    if (!s || !s.data.length) return empty(container, "waiting for data…");
+    const row = s.data[s.data.length - 1];
+    const items = s.info.channels.map((name, i) => ({ name, status: MASK_STATUS[row[i]] || "unknown" }));
+    headMap(container, items, { positions: s.info.positions });
+  };
+
   function render(container, spec, store) {
     const fn = R[spec.type];
     if (fn) fn(container, spec, store);
@@ -383,5 +475,5 @@
     return hd;
   }
 
-  window.MuseRenderers = { render, Store, fmt, info, heading, renderers: R };
+  window.MuseRenderers = { render, Store, fmt, info, heading, headMap, renderers: R };
 })();

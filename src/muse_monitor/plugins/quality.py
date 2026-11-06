@@ -6,12 +6,13 @@ import numpy as np
 from pydantic import BaseModel, Field
 
 from muse_monitor.sdk import (MASK_FLAT, MASK_LABELS, MASK_NOISY, MASK_OK, MASK_POOR_CONTACT, Analyzer, Axis, Chunk,
-                              IncompatibleInput, Report, StreamInfo, StreamSelector, Threshold, ViewSpec, Windower)
+                              IncompatibleInput, Report, StreamInfo, StreamSelector, Threshold, ViewSpec, Windower,
+                              eeg_channels)
 
 
 class Quality(Analyzer):
     name = "quality"
-    version = "1.0.0"
+    version = "1.1.0"            # 1.1: "usable" counts head electrodes only (not AUX inputs)
     summary = "Per-channel contact/noise check (std, drift, line noise) -> quality/mask"
     inputs = [StreamSelector(kind="eeg")]
 
@@ -31,9 +32,11 @@ class Quality(Analyzer):
         (self.src,) = inputs.values()
         self.win = Windower(self.config.window_s, self.config.step_s, self.src.rate)
         ch = self.src.channels
+        self.head = eeg_channels(ch) or list(range(len(ch)))       # AUX inputs are not on the head
         self.counts = np.zeros((len(ch), 4), dtype=np.int64)
         rate = 1.0 / self.config.step_s
-        return [StreamInfo("mask", "mask", ch, ["1"] * len(ch), rate,
+        positions = {c: p for c, p in (self.src.positions or {}).items() if c in ch} or None
+        return [StreamInfo("mask", "mask", ch, ["1"] * len(ch), rate, positions=positions,
                            meta={"labels": {str(k): v for k, v in MASK_LABELS.items()}}),
                 StreamInfo("std", "derived", ch, ["uV"] * len(ch), rate),
                 StreamInfo("usable", "derived", ["fraction"], ["1"], rate)]
@@ -61,12 +64,19 @@ class Quality(Analyzer):
             self.counts[np.arange(len(mask)), mask] += 1
             self.ctx.emit(Chunk.single("mask", mask, w.t_end))
             self.ctx.emit(Chunk.single("std", std, w.t_end))
-            self.ctx.emit(Chunk.single("usable", [float(np.mean(mask == MASK_OK))], w.t_end))
+            self.ctx.emit(Chunk.single("usable", [float(np.mean(mask[self.head] == MASK_OK))], w.t_end))
 
     def views(self) -> list[ViewSpec]:
         c = self.config
         return [
-            ViewSpec(id="std", title="Signal quality (std per channel)", section="quality", type="bars", streams=["std"],
+            ViewSpec(id="electrodes", title="Electrode contact", section="quality", type="electrodes",
+                     streams=["mask"],
+                     description="Your head seen from above, nose at the top: each dot is an electrode where it "
+                                 "touches you (TP9 and TP10 behind the ears, AF7 and AF8 on the forehead; the grey "
+                                 "diamond is the reference point). Solid green: good contact. Half-filled yellow: "
+                                 "noisy, often movement or tension. Empty red ring: poor contact. Dashed grey: no "
+                                 "signal. The line below says what to adjust."),
+            ViewSpec(id="std", title="Signal variation per electrode", section="signal", type="bars", streams=["std"],
                      description="How much each electrode's signal varies (standard deviation over the last "
                                  f"{c.window_s:g} s). Green is a normal range. Near zero means a flat signal, usually "
                                  "no skin contact; very high values mean noise, often movement or a loose band. "
@@ -76,8 +86,9 @@ class Quality(Analyzer):
                                  Threshold(min=c.flat_uv, max=c.noisy_uv, level="ok", label="ok"),
                                  Threshold(min=c.noisy_uv, level="bad", label="noisy")]),
             ViewSpec(id="usable", title="Usable channels", section="quality", type="metric", streams=["usable"],
-                     description="Share of EEG channels that currently pass the quality check (not flat, not noisy, "
-                                 "no large drift, little mains hum). Band power averages only use these channels.",
+                     description="Share of the electrodes on your head that currently pass the quality check (not "
+                                 "flat, not noisy, no large drift, little mains hum). AUX inputs are not counted. "
+                                 "Band power averages only use these electrodes.",
                      y=Axis(unit="%", min=0, max=1),
                      thresholds=[Threshold(max=0.5, level="bad"), Threshold(min=0.5, max=0.99, level="warn"),
                                  Threshold(min=0.99, level="ok")]),

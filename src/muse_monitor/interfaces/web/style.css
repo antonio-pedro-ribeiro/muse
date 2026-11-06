@@ -125,3 +125,14 @@ details.menu > summary::-webkit-details-marker { display: none; }
   background: var(--panel); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgb(0 0 0 / .15); }
 td.summary-cell { max-width: 420px; color: var(--muted); font-size: 12px; }
 @media (max-width: 900px) { .live-top { grid-template-columns: 1fr; } }
+
+/* electrode map */
+.headmap { display: grid; justify-items: center; gap: 6px; }
+.headmap-svg { width: 100%; max-width: 280px; height: auto; }
+.headmap-summary { font-size: 13px; text-align: center; } .headmap-summary.warn { color: var(--text); font-weight: 600; }
+.headmap-legend { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; font-size: 11px; color: var(--muted); }
+.headmap-legend .legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.summary-top { display: grid; grid-template-columns: 1fr 240px; gap: 16px; align-items: start; }
+.summary-top.single { grid-template-columns: 1fr; }
+.summary-map h3 { text-align: center; justify-content: center; display: flex; }
+@media (max-width: 700px) { .summary-top { grid-template-columns: 1fr; } }

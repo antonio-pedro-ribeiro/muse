@@ -3,7 +3,7 @@
    Technical detail lives in collapsed "Details" sections. Plugins place their views with ViewSpec.section. */
 (function () {
   "use strict";
-  const { render, Store, fmt, info, heading } = window.MuseRenderers;
+  const { render, Store, fmt, info, heading, headMap } = window.MuseRenderers;
 
   // Plain-language explanations for the UI's own elements. Plugin views bring their own (ViewSpec.description).
   const HELP = {
@@ -33,6 +33,7 @@
     usable: "Share of electrode readings with good contact over the session (from the signal-quality check).",
     received: "Share of the expected EEG samples that arrived. Bluetooth or Wi-Fi dropouts lower it; about 98–99% is normal.",
     summaryCol: "The first line of the session description. Run Analyze on older sessions to get one.",
+    contact: "Each electrode's share of the session with good contact, on your head seen from above (nose at the top). Green: 80% or more. Yellow: 50–80%. Red ring: under 50%, so that electrode's data is mostly unreliable.",
     replay: "Plays this recording back on the Live page as if it were happening now, at the chosen speed, with the analyzers it was recorded with plus the session description. Markers and calibration from the recording are replayed too. Nothing is saved; the recording is not changed. Only one live session can run at a time.",
     replaying: "This is a recorded session being played back, not live data. Times shown are the original recording times. Adding markers and calibrating are off during a replay.",
     analyze: "Runs the analyzers over the whole recording as fast as possible, saves their results next to the raw data, refreshes the summary and charts on this page, and creates an HTML report. The raw recording is never changed.",
@@ -476,13 +477,26 @@
     const descNotes = desc ? desc.notes : [];
     const segNotes = descNotes.slice(1).filter((n) => n.startsWith("“"));
     const otherNotes = descNotes.slice(1).filter((n) => !n.startsWith("“"));
+    const qrep = report(allReports, ": Signal quality");
+    const contact = qrep ? Object.entries(qrep.metrics).filter(([k2]) => /^usable_.+_pct$/.test(k2) && !/AUX/i.test(k2))
+      .map(([k2, v]) => ({ name: k2.slice(7, -4), status: v >= 80 ? "good" : v >= 50 ? "fair" : "poor", caption: `${Math.round(v)}%` })) : [];
+    const mapBox = h("div");
+    if (contact.length) {
+      const worst = contact.slice().sort((a, b) => parseFloat(a.caption) - parseFloat(b.caption))[0];
+      headMap(mapBox, contact, { legend: ["good", "fair", "poor"], summary: worst.status === "good"
+        ? "Every electrode had good contact for at least 80% of the session."
+        : `Least reliable: ${worst.name} (${worst.caption} good contact).` });
+    }
     const summary = h("div", { class: "card wide" }, sub("Summary", HELP.summary),
-      h("div", { class: "keynums" }, nums.map(([l, v, help]) => h("div", {}, h("div", { class: "metric-value" }, v),
-        h("div", { class: "metric-label with-info" }, l, info(help, l))))),
-      desc ? [h("p", { class: "lead" }, descNotes[0]),
-        segNotes.length ? h("ul", { class: "segments" }, segNotes.map((n) => h("li", {}, n))) : null,
-        otherNotes.map((n) => h("p", { class: "muted small" }, n))]
-        : h("p", { class: "muted" }, "No description for this session yet: press Analyze (or Replay) to create one."));
+      h("div", { class: "summary-top" + (contact.length ? "" : " single") },
+        h("div", {},
+          h("div", { class: "keynums" }, nums.map(([l, v, help]) => h("div", {}, h("div", { class: "metric-value" }, v),
+            h("div", { class: "metric-label with-info" }, l, info(help, l))))),
+          desc ? [h("p", { class: "lead" }, descNotes[0]),
+            segNotes.length ? h("ul", { class: "segments" }, segNotes.map((n) => h("li", {}, n))) : null,
+            otherNotes.map((n) => h("p", { class: "muted small" }, n))]
+            : h("p", { class: "muted" }, "No description for this session yet: press Analyze (or Replay) to create one.")),
+        contact.length ? h("div", { class: "summary-map" }, heading("h3", "Contact over the session", HELP.contact), mapBox) : null));
 
     // timeline: one time axis for all charts; segments zoom them
     const raw = streams.filter((s) => !s.id.includes("/") && s.rate > 0)

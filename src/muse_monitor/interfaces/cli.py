@@ -271,6 +271,17 @@ class Dashboard:
             return Text(f"{datetime.fromtimestamp(last['t']):%H:%M:%S}  {last['data']['text']}")
         if row is None:
             return Text("waiting for data…", style="dim")
+        if v["type"] == "electrodes":           # terminal version of the head map: symbol + status per electrode
+            look = {0: ("●", "green", "good"), 1: ("○", "red", "poor contact"), 2: ("◐", "yellow", "noisy"),
+                    3: ("◌", "dim", "no signal")}
+            out = Text()
+            for name, x in zip(self._channels(s), row):
+                if name.upper().startswith("AUX"):
+                    continue
+                sym, style, word = look.get(int(x) if x == x else -1, ("?", "dim", "no data"))
+                out.append(f"{sym} ", style=style)
+                out.append(f"{name} {word}   ")
+            return out
         if v["type"] == "metric":
             pct = y.get("unit") == "%"
             return Text("  ".join((f"{round(x * 100)}%" if pct and x is not None else fmt_num(x)) for x in row),

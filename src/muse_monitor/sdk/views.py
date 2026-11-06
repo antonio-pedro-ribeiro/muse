@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ViewType = Literal["timeseries", "spectrum", "bars", "metric", "table", "events", "text"]
+ViewType = Literal["timeseries", "spectrum", "bars", "metric", "table", "events", "text", "electrodes"]
 # Where interfaces place a view: is the signal good / what is it doing now / over time / the raw signal / what happened
 Section = Literal["quality", "now", "trends", "signal", "events", ""]
 

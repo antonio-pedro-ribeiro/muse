@@ -129,7 +129,7 @@ def test_spec_example_plugin():
 def test_every_builtin_view_explains_itself():
     out = run_pipeline([(Quality, {}), (Filter, {}), (Baseline, {}), (BandPower, {}), (Artifacts, {})],
                        synthetic(), seconds=3)
-    assert len(out.session.views) == 9
+    assert len(out.session.views) == 10
     missing = [v["id"] for v in out.session.views if len(v["description"]) < 40]
     assert not missing, f"views without a description: {missing}"
 
@@ -185,3 +185,25 @@ def test_openmuse_eeg_is_centred_on_zero(monkeypatch):
     x = ctx.stacked("eeg")
     assert np.allclose(x[:, 0], [0.0, 100 * 1450 / 16383, -725.04], atol=0.01)
     assert src._declared["eeg"].meta["offset_uv"] == pytest.approx(-725.04, abs=0.01)
+
+
+def test_quality_usable_ignores_aux_and_mask_carries_positions():
+    """AUX inputs are not on the head: a railing (flat) AUX input must not lower "usable" (seen on a real Athena)."""
+    from muse_monitor.sdk import MUSE_POSITIONS
+    ctx = CaptureContext()
+    q = Quality(Quality.Config(), ctx)
+    chans = ["TP9", "AF7", "AF8", "TP10", "AUX_1"]
+    outs = q.setup({"eeg": StreamInfo("eeg", "eeg", chans, ["uV"] * 5, 256.0,
+                                      positions={c: MUSE_POSITIONS[c] for c in chans[:4]})})
+    mask_info = next(o for o in outs if o.id == "mask")
+    assert set(mask_info.positions) == set(chans[:4])
+
+    async def go():
+        for c in sine_chunks(10, 4, channels=5, noise=5.0):
+            c.data[:, 4] = 724.96                              # AUX stuck at the converter's limit
+            await q.process(c, False)
+    asyncio.run(go())
+    assert ctx.stacked("mask")[-1].tolist() == [MASK_OK] * 4 + [MASK_FLAT]
+    assert ctx.stacked("usable")[-1, 0] == 1.0
+    views = {v.id: v for v in q.views()}
+    assert views["electrodes"].type == "electrodes" and views["electrodes"].section == "quality"

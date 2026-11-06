@@ -224,12 +224,16 @@ From top to bottom:
   during a replay.
 - **Calibration banner:** while calibrating, a banner says when to keep your eyes open and when to close
   them, with a countdown, then confirms when the baseline is ready.
-- **Signal check:** contact quality per electrode and the share of usable electrodes. A warning appears
-  when fewer than half have good contact. Check this first.
+- **Signal check:** a picture of your head seen from above (nose at the top) with each electrode where
+  it touches you: TP9 and TP10 behind the ears, AF7 and AF8 on the forehead, and the reference point
+  between them. Solid green is good contact, half-filled yellow noisy, an empty red ring poor contact,
+  dashed grey no signal. A line underneath says what to adjust, for example *Adjust: TP9 behind the
+  left ear (poor contact)*. Below it, the share of usable electrodes (AUX inputs aren't counted). Check
+  this first.
 - **Right now:** the latest session description (every 30 s) and the current band power. With a trained
   probe, its output appears here too.
 - **Trends:** band power over the last 2 minutes, and against your baseline once you have calibrated.
-- **Signal:** the filtered EEG traces and the spectrum.
+- **Signal:** the filtered EEG traces, how much each electrode's signal varies, and the spectrum.
 - **Events:** earlier descriptions, calibration, blinks, jaw clenching and movement.
 - **Details** (collapsed): one chip per plugin (green working, yellow degraded, red stopped after an
   error; "dropped" counts chunks an analyzer skipped because it fell behind; the recording never drops
@@ -250,7 +254,9 @@ by label or description. Click a row to open the session.
   controls are off). **Analyze** runs the analyzers over the whole recording and refreshes this page.
   **Export ▾** downloads CSV (zip) or EDF+.
 - **Summary:** length, usable share, data received, blinks per minute and alpha share, then the session
-  description for the whole recording and for each marked or calibration segment.
+  description for the whole recording and for each marked or calibration segment. Beside it, the head
+  picture shows each electrode's share of the session with good contact (green 80% or more, yellow
+  50–80%, red ring under 50%).
 - **Timeline:** band power over time (after Analyze) and the recorded signal, on one time axis with
   markers as dashed lines. Click a segment chip (for example *eyes closed 01:30–03:00*) to zoom every
   chart to it; *Whole session* zooms back out. Pick the stream (`eeg`, `acc`, `gyro`, `optics`) on the

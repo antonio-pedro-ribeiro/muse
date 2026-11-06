@@ -141,8 +141,13 @@ class ModelAnalyzer(Analyzer):
         if self.head is not None:
             self._check_head(self.head)
             self.class_sum = np.zeros(len(self.head.classes))
+            cv = self.head.meta.get("cv", {})
+            folds = cv.get("folds", [])
+            validation = {k: cv.get(k) for k in ("scheme", "model_mean", "baseline_mean", "chance")}
+            validation["model_fold_wins"] = sum(f["model"] > f["baseline"] for f in folds)
+            validation["folds"] = len(folds)
             out.append(StreamInfo("probs", "derived", self.head.classes, ["1"] * len(self.head.classes), rate,
-                                  meta={**meta, "head": str(self.config.head)}))
+                                  meta={**meta, "head": str(self.config.head), "validation": validation}))
         return out
 
     def _check_head(self, head: ProbeHead) -> None:

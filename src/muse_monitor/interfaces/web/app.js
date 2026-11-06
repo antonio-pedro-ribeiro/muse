@@ -140,7 +140,7 @@
     const plugins = await api("/plugins");
     const sources = plugins.filter((p) => p.kind === "source" && p.name !== "replay");
     const analyzers = plugins.filter((p) => p.kind === "analyzer");
-    const defaults = ["quality", "filter", "baseline", "bandpower", "artifacts"];
+    const defaults = ["quality", "filter", "baseline", "bandpower", "artifacts", "describe"];
     const srcSelect = h("select", {}, sources.map((s) => h("option", { value: s.name, disabled: s.status !== "ok" },
       `${s.name}${s.status !== "ok" ? " (" + s.status + ")" : ""}`)));
     const optsBox = h("div");
@@ -321,7 +321,7 @@
     const available = new Set(streams.map((s) => s.id));
     const viewCards = [];
     for (const v of sess.views || []) {
-      if (v.type === "events") {
+      if (v.type === "events" || v.type === "text") {
         const body = h("div");
         render(body, v, { streams: {}, events });
         viewCards.push(h("div", { class: "card" }, sub(v.title, v.description), body));

@@ -31,7 +31,7 @@ def build_report_html(session: Session) -> str:
                             "data": [_clean(r[1]) for r in rows]}
     events = [e.to_dict() for e in session.snapshot.events
               if not e.type.startswith(("kernel.", "stream.gap"))]
-    views = [v for v in info.views if all(s in streams for s in v["streams"]) or v["type"] == "events"]
+    views = [v for v in info.views if all(s in streams for s in v["streams"]) or v["type"] in ("events", "text")]
     payload = json.dumps({"streams": streams, "events": events, "views": views}, default=str)
 
     sections = []

@@ -51,7 +51,7 @@ class Pipeline(BaseModel):
         return (self.source, [a for a in self.analyzer if a.enabled], [s for s in self.sink if s.enabled])
 
 
-DEFAULT_ANALYZERS = ["quality", "filter", "baseline", "bandpower", "artifacts"]
+DEFAULT_ANALYZERS = ["quality", "filter", "baseline", "bandpower", "artifacts", "describe"]   # describe last
 
 
 def default_pipeline(source: str = "openmuse", record: bool = True, **source_options: Any) -> Pipeline:

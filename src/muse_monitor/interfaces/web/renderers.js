@@ -266,6 +266,24 @@
     container.replaceChildren(ul);
   };
 
+  /** Paragraphs carried by events (data.text), newest first: e.g. the session description. */
+  R.text = function (container, spec, store) {
+    const prefixes = spec.event_types || [];
+    const evs = (store.events || []).filter((e) => e.data && e.data.text &&
+      (!prefixes.length || prefixes.some((p) => e.type.startsWith(p))));
+    if (!evs.length) return empty(container, "nothing to describe yet");
+    const limit = spec.window_s >= 1e8 ? evs.length : 20;
+    const list = el("div", "text-view");
+    for (const e of evs.slice(-limit).reverse()) {
+      const item = el("div", "text-item");
+      const t0 = new Date(e.t * 1000).toLocaleTimeString();
+      const t1 = e.duration ? "–" + new Date((e.t + e.duration) * 1000).toLocaleTimeString() : "";
+      item.append(el("div", "ev-time", t0 + t1), el("p", null, e.data.text));
+      list.appendChild(item);
+    }
+    container.replaceChildren(list);
+  };
+
   function render(container, spec, store) {
     const fn = R[spec.type];
     if (fn) fn(container, spec, store);

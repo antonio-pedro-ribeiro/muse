@@ -43,6 +43,7 @@ baseline = "muse_monitor.plugins.baseline:Baseline"
 bandpower = "muse_monitor.plugins.bandpower:BandPower"
 artifacts = "muse_monitor.plugins.artifacts:Artifacts"
 cbramod = "muse_monitor.plugins.cbramod:CBraMod"
+describe = "muse_monitor.plugins.describe:Describe"
 recorder = "muse_monitor.plugins.recorder:Recorder"
 export = "muse_monitor.plugins.export:Export"
 

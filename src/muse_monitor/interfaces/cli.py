@@ -261,6 +261,13 @@ class Dashboard:
             evs = [e for e in self.events if e["type"].startswith(prefixes)][-6:]
             return Text("\n".join(f"{datetime.fromtimestamp(e['t']):%H:%M:%S} {e['type']}" for e in reversed(evs))
                         or "no events", style="dim" if not evs else "")
+        if v["type"] == "text":
+            prefixes = tuple(v.get("event_types") or [""])
+            last = next((e for e in reversed(self.events) if e["type"].startswith(prefixes)
+                         and (e.get("data") or {}).get("text")), None)
+            if last is None:
+                return Text("nothing to describe yet", style="dim")
+            return Text(f"{datetime.fromtimestamp(last['t']):%H:%M:%S}  {last['data']['text']}")
         if row is None:
             return Text("waiting for data…", style="dim")
         if v["type"] == "metric":
@@ -368,10 +375,18 @@ def print_session(d: dict[str, Any]) -> None:
                       str(s["gaps"]), str(s["missing_samples"]), str(s["duplicates"]))
     console.print(t)
     for r in d.get("reports") or []:
-        rt = Table(title=r["title"], show_header=False, title_justify="left")
-        for k, v in r["metrics"].items():
-            rt.add_row(k, fmt_num(v))
-        console.print(rt)
+        print_report(r)
+
+
+def print_report(r: dict[str, Any]) -> None:
+    """A plugin's report: metrics table, then its notes as paragraphs (for `describe`, the text itself)."""
+    t = Table(title=r["title"], show_header=False, title_justify="left")
+    for k, v in r["metrics"].items():
+        t.add_row(k, fmt_num(v))
+    console.print(t)
+    for note in r.get("notes") or []:
+        console.print(Text(note), style="dim" if not r["title"].endswith("Session description") else "")
+        console.print()
 
 
 @app.command("run")
@@ -553,10 +568,7 @@ def analyze(
             report.write_bytes(f.report_path(session_id, name).read_bytes())
         def human(j: dict[str, Any]) -> None:
             for r in j["result"].get("reports", []):
-                t = Table(title=r["title"], show_header=False, title_justify="left")
-                for k, v in r["metrics"].items():
-                    t.add_row(k, fmt_num(v))
-                console.print(t)
+                print_report(r)
             if name:
                 where = j["result"].get("report_path") or name
                 console.print(f"report: {where}" + (f" (copied to {report})" if report and not server else ""))

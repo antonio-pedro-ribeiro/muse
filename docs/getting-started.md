@@ -19,6 +19,8 @@ session. For every command and option, see [usage.md](usage.md).
   device and its settings, so nothing is lost or silently changed.
 - **Mark moments.** Add labelled markers ("eyes closed", "started meditating") while you record,
   so you can find those moments later.
+- **Read a description.** Every 30 seconds, and for the whole session, the app sums up the measurements
+  in plain language: signal quality, which rhythms stood out compared with your baseline, blinks and movement.
 - **Look back.** Re-analyze any recording, get a one-page HTML report, and compare sessions.
 - **Export.** Take your data to a spreadsheet (CSV) or to research tools such as EEGLAB or MNE
   (EDF+).

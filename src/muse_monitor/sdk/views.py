@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ViewType = Literal["timeseries", "spectrum", "bars", "metric", "table", "events"]
+ViewType = Literal["timeseries", "spectrum", "bars", "metric", "table", "events", "text"]
 
 
 class Axis(BaseModel):
@@ -36,5 +36,6 @@ class ViewSpec(BaseModel):
     window_s: float = 10.0
     y: Axis | None = None
     thresholds: list[Threshold] = Field(default_factory=list)
-    event_types: list[str] = Field(default_factory=list)   # "events" views: type prefixes to show
+    event_types: list[str] = Field(default_factory=list)   # "events"/"text" views: type prefixes to show
+                                                            # ("text": events whose data.text is a paragraph)
     plugin: str = ""                                        # set by the kernel

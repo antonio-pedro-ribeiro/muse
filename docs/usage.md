@@ -88,7 +88,7 @@ muse run [--source openmuse] [-a ANALYZER]... [-o key=value]... [--label TEXT]
 | Option | Meaning |
 |---|---|
 | `--source` | `openmuse` (the headband, default) or `synthetic` (test signals) |
-| `-a, --analyzer` | Analyzers to run (repeatable). Default: `quality`, `filter`, `baseline`, `bandpower`, `artifacts` |
+| `-a, --analyzer` | Analyzers to run (repeatable). Default: `quality`, `filter`, `baseline`, `bandpower`, `artifacts`, `describe` |
 | `-o, --option key=value` | Source setting, for example `-o address=00:55:DA:BB:E0:4C` or `-o preset=p21` |
 | `--label` | A name for the session, shown in lists and reports |
 | `--duration` | Stop automatically after this time. Without it, the session runs until you press `q` |
@@ -212,6 +212,7 @@ Press **Start session**. If the last session failed, the page shows why above th
 | Band power vs. baseline | Power divided by your eyes-open calibration (1 = same as baseline). Empty until you calibrate. |
 | Artifacts (`artifacts`) | Blinks, jaw clenches and movement as events. |
 | Probe output (`cbramod` with a head) | Probability per label from your trained probe ([section 6](#6-models-and-probes)). |
+| Session description (`describe`) | Every 30 s, a plain-language paragraph: signal quality, how power is spread over the bands (against your baseline once calibrated), blinks, jaw clenching and movement. It describes the signal, not states of mind. The end-of-session report adds one paragraph for the whole session and one per marker or calibration segment. |
 
 ### Sessions
 
@@ -275,6 +276,7 @@ plugin = "export"         # also write CSV/EDF+ when the session closes
 formats = ["csv", "edf"]
 ```
 
+List `describe` after the analyzers it reads (`quality`, `bandpower`, `artifacts`, and `cbramod` if used).
 `muse plugins info NAME` lists every option a plugin accepts. A plugin can appear twice if each
 copy has its own `id`, for example two `bandpower` blocks with `id = "bp_short"` and
 `id = "bp_long"`.

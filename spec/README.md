@@ -81,7 +81,7 @@ Plugins import only `muse_monitor.sdk`.
 
 Python 3.13, uv, numpy, scipy, pydantic v2, `tomllib`, Typer + Rich, FastAPI + uvicorn, pyarrow,
 a small canvas renderer (no frontend dependencies). EDF+ is written by a built-in writer (pyedflib has no
-Python 3.13 Windows wheel). Optional extra (M5): `[models]` (torch, braindecode).
+Python 3.13 Windows wheel). Optional extra (M5): `[models]` (torch, braindecode, safetensors, huggingface-hub, scikit-learn).
 A plugin whose extra isn't installed is listed as `unavailable` with an install hint.
 
 ## 5. Decisions

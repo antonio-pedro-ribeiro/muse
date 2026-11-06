@@ -38,7 +38,7 @@ CI: `uv run pytest -m "not device"`, `ruff`, `pyright --strict` on `sdk/` and `k
 | M1 | Real device works (Muse S Athena, fw 3.1.19, preset p1041, 2026-11-06). EEG 256.4 Hz (within 1%), ~0.6% EEG samples missing, every gap reported as `stream.gap`. Readable after a forced kill (`taskkill /F /T`): all streams replay, ~1 s lost, `sessions show` rebuilds stats from files. Fixed on hardware: settle backlog decoded out of order (false gaps, wrong rate); CLI crash on non-UTF-8 consoles. **Pending:** the 30 min run's results; signal quality not checked yet (headband not worn) |
 | M3 | Done. Every CLI command was run against `muse serve` with `--server` |
 | M4 | Done. Smoke-tested in Chromium; CPU/latency targets not measured yet |
-| M5 | Not started (needs real recordings to evaluate the probe) |
+| M5 | Built: `ModelAnalyzer`, `cbramod` (pinned weights, ~18 ms per 4 s window on CPU), `models pull`, `train-probe` (probe vs band power, session-held-out CV), `synthetic` `script` option for labelled test data. Verified end to end on scripted synthetic sessions, where band power wins as expected (1.00 vs 0.92). **Pending:** the acceptance check on real labelled recordings (e.g. 3+ sessions with `--calibrate` or markers) |
 | M6 | `artifacts` and CSV/EDF+ export done; EDF+ not yet opened in MNE |
 
 ## 5. Decided

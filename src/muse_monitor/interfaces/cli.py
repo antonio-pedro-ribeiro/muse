@@ -30,6 +30,8 @@ plugins_app = typer.Typer(no_args_is_help=True, help="Inspect installed plugins.
 sessions_app = typer.Typer(no_args_is_help=True, help="Recorded sessions.")
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(sessions_app, name="sessions")
+models_app = typer.Typer(no_args_is_help=True, help="Model weights.")
+app.add_typer(models_app, name="models")
 for _stream in (sys.stdout, sys.stderr):     # Windows pipes default to cp1252, which can't print "●"
     if hasattr(_stream, "reconfigure") and (_stream.encoding or "").lower() not in ("utf-8", "utf8"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
@@ -466,6 +468,53 @@ def sessions_repair(session_id: str, json_out: JsonOpt = False, server: ServerOp
     async def go() -> None:
         emit(await call(facade(server, token).repair, session_id), json_out,
              lambda r: console.print(f"compacted: {', '.join(r['compacted_streams']) or 'nothing to do'}"))
+    run(go())
+
+
+# -- models ---------------------------------------------------------------------------------------------------
+@models_app.command("pull")
+def models_pull(plugin: str,
+                revision: Annotated[Optional[str], typer.Option(help="Weights version; default: the plugin's pin.")] = None,
+                json_out: JsonOpt = False, server: ServerOpt = None, token: TokenOpt = None) -> None:
+    """Download a model plugin's weights (sessions never download anything)."""
+    async def go() -> None:
+        with console.status(f"downloading {plugin} weights…"):
+            r = await call(facade(server, token).pull_model, plugin, revision)
+        emit(r, json_out, lambda d: console.print(f"{d['weights']} @ {d['revision'][:10]} -> {d['path']}"))
+    run(go())
+
+
+@app.command("train-probe")
+def train_probe(
+    sessions: Annotated[list[str], typer.Argument(help="Labelled session ids.")],
+    plugin: Annotated[str, typer.Option(help="Model plugin.")] = "cbramod",
+    label_from: Annotated[str, typer.Option(help="markers | calibration")] = "markers",
+    out: Annotated[Path, typer.Option(help="Head file to write (.npz).")] = Path("head.npz"),
+    window_s: Annotated[Optional[float], typer.Option(help="Seconds per window (model default if empty).")] = None,
+    json_out: JsonOpt = False, server: ServerOpt = None, token: TokenOpt = None,
+) -> None:
+    """Train a linear probe on model embeddings and compare it with band power (session-held-out CV)."""
+    options = {"window_s": window_s} if window_s else {}
+
+    async def go() -> None:
+        with console.status("embedding sessions and cross-validating…"):
+            r = await call(facade(server, token).train_probe, sessions, plugin, label_from,
+                           str(out if server else out.resolve()), options)
+
+        def human(d: dict[str, Any]) -> None:
+            cv = d["cv"]
+            console.print(f"windows per label: {d['windows']}   CV: {cv['scheme']}   chance {cv['chance']:.2f}")
+            t = Table("fold", "test windows", f"{plugin} probe", "band power", title="balanced accuracy",
+                      title_justify="left")
+            for i, f in enumerate(cv["folds"]):
+                t.add_row(f["held_out"] or str(i + 1), str(f["test_windows"]), f"{f['model']:.3f}",
+                          f"{f['baseline']:.3f}")
+            t.add_row("[bold]mean[/]", "", f"[bold]{cv['model_mean']:.3f}[/] ± {cv['model_std']:.3f}",
+                      f"[bold]{cv['baseline_mean']:.3f}[/] ± {cv['baseline_std']:.3f}")
+            console.print(t)
+            console.print(("[green]" if cv["model_beats_baseline"] else "[yellow]") + d["verdict"] + "[/]")
+            console.print(f"head: {d['head']}  (use: -a {plugin} with head = \"{d['head']}\" in the pipeline)")
+        emit(r, json_out, human)
     run(go())
 
 

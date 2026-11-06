@@ -358,6 +358,21 @@ class KernelFacade:
             await job.task
         return job.to_dict()
 
+    # -- models -----------------------------------------------------------------------------------
+    async def pull_model(self, plugin: str, revision: str | None = None) -> dict[str, Any]:
+        """Download a model plugin's pinned weights (the only place weights are downloaded)."""
+        cls = self.registry.get(plugin, "analyzer")
+        if not hasattr(cls, "pull"):
+            raise ConfigError(f"plugin {plugin!r} has no model weights")
+        cfg = cls.Config(**({"revision": revision} if revision else {}))
+        path = await asyncio.to_thread(cls.pull, cfg)
+        return {"plugin": plugin, "weights": cfg.weights, "revision": cfg.revision, "path": str(path)}
+
+    async def train_probe(self, sessions: list[str], plugin: str = "cbramod", label_from: str = "markers",
+                          out: str = "head.npz", options: dict[str, Any] | None = None) -> dict[str, Any]:
+        from ..probe import train_probe
+        return await train_probe(self, [self._check_id(s) for s in sessions], plugin, label_from, out, options)
+
     # -- stored data ------------------------------------------------------------------------------
     def _recorder(self) -> Any:
         return self.registry.get("recorder", "sink")

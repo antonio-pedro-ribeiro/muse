@@ -8,7 +8,7 @@ import time
 import numpy as np
 from pydantic import BaseModel, Field
 
-from muse_monitor.sdk import MUSE_POSITIONS, Chunk, DeviceInfo, Health, Source, StreamInfo
+from muse_monitor.sdk import MUSE_POSITIONS, Chunk, DeviceInfo, Event, Health, Source, StreamInfo
 
 
 class Synthetic(Source):
@@ -33,6 +33,10 @@ class Synthetic(Source):
         imu: bool = Field(True, description="Also simulate the accelerometer.")
         gaps: list[tuple[float, int]] = Field(default_factory=list,
                                               description="Simulated data loss: [[at second, samples lost], ...].")
+        script: list[tuple[float, str, dict[float, float]]] = Field(
+            default_factory=list, description="Scripted scenes: [[at second, marker label, {Hz: µV}], ...]. At each "
+                                              "time, add a marker and switch the rhythms (e.g. more alpha for "
+                                              "'eyes closed'). For testing labelled analyses.")
         seed: int = Field(0, description="Random seed, for repeatable signals.")
         start_time: float | None = Field(None, description="Start timestamp (UTC seconds); default now.")
 
@@ -59,6 +63,9 @@ class Synthetic(Source):
         wall0 = time.monotonic()
         n_ch = len(c.channels)
         phases = rng.uniform(0, 2 * np.pi, size=(len(c.sines), n_ch))
+        sines = {f: (a, ph) for (f, a), ph in zip(c.sines.items(), phases)}    # Hz -> (µV, phase per channel)
+        scene_rng = np.random.default_rng(c.seed + 1)         # separate, so scripts don't change the noise
+        script = sorted((round(at * c.rate), label, rh) for at, label, rh in c.script)
         frontal = np.array([ch.startswith(("AF", "Fp", "FP")) for ch in c.channels])
         step = max(1, round(c.chunk_s * c.rate))
         total = round(c.duration_s * c.rate) if c.duration_s > 0 else None
@@ -69,12 +76,18 @@ class Synthetic(Source):
         while not self._stop.is_set() and (total is None or idx < total):
             while gaps and idx >= gaps[0][0]:
                 idx += gaps.pop(0)[1]
-            n = step if total is None else min(step, total - idx)
+            while script and idx >= script[0][0]:
+                at, label, rhythms = script.pop(0)
+                self.ctx.emit(Event("marker", t0 + at / c.rate, source=self.ctx.instance_id, data={"label": label}))
+                sines = {f: (a, sines[f][1] if f in sines else scene_rng.uniform(0, 2 * np.pi, n_ch))
+                         for f, a in rhythms.items()}
+            step_n = min(step, script[0][0] - idx) if script else step     # scene changes start a new chunk
+            n = step_n if total is None else min(step_n, total - idx)
             if n <= 0:
                 break
             rel = (idx + np.arange(n)) / c.rate
             x = rng.normal(0.0, c.noise_uv, size=(n, n_ch))
-            for (f, amp), ph in zip(c.sines.items(), phases):
+            for f, (amp, ph) in sines.items():
                 x += amp * np.sin(2 * np.pi * f * rel[:, None] + ph)
             if c.blink_every_s > 0:
                 phase = (rel % c.blink_every_s) - c.blink_every_s / 2

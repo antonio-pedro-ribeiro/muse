@@ -72,20 +72,28 @@ class Analyzer(Plugin):
 ### Model analyzers
 
 ```python
-class ModelAnalyzer(Analyzer):
+class ModelAnalyzer(Analyzer):                     # muse_monitor.sdk
     cpu_bound = True
+    embedding_dim: ClassVar[int]
     class Config(BaseModel):
-        weights: str              # HF repo id or local path
+        weights: str              # HF repo id or local folder
         revision: str             # required: pins the weights
         window_s: float = 4.0
         step_s: float = 1.0
-        head: str | None = None   # probe from `muse train-probe`
-    def load(self) -> None: ...                    # in worker thread
-    def preprocess(self, w: Window) -> Any: ...    # resample, map channels via positions
-    def infer(self, x) -> np.ndarray: ...          # embedding, or class probabilities if head
+        head: str | None = None   # probe from `muse train-probe` (.npz)
+        channels: list[str] | None = None
+    def load(self, path: Path) -> None: ...                  # worker thread, on the first window
+    def preprocess(self, w: Window, rate: float) -> Any: ... # resample, filter, scale
+    def infer(self, x) -> np.ndarray: ...                    # 1-D embedding
 ```
 
-Weights are downloaded only by `muse models pull`. There are no downloads during a session.
+The base class emits `embedding` and, with a head, `probs` (one channel per class) plus views.
+Weights are downloaded only by `muse models pull` into `~/.cache/muse-monitor/models`
+(`MUSE_MODELS_DIR`). There are no downloads during a session; missing weights fail only that plugin.
+
+A **probe head** is a standardizer plus a linear layer stored as plain arrays in an `.npz` (no
+pickle), applied with numpy. It records the model, weights revision, channels and window it was
+trained with; a mismatch fails the plugin instead of giving silently wrong output.
 
 ## 4. Sink
 
@@ -151,19 +159,21 @@ A plugin can appear more than once with distinct `id`s. Stream ids are namespace
 
 ## 8. Built-ins
 
-| Kind | Name | Purpose |
-|---|---|---|
-| source | `synthetic` | Sines + noise + fake blinks; tests and demos |
-| source | `openmuse` | Muse S Athena over BLE (ports `check.py`) |
-| source | `replay` | Recorded session as a source; powers offline analysis |
-| analyzer | `quality` | Per-channel contact/noise → `quality/mask` + views |
-| analyzer | `filter` | 1–40 Hz band-pass + 50/60 Hz notch, for display |
-| analyzer | `baseline` | Eyes-open/closed calibration → per-session normalization |
-| analyzer | `bandpower` | Welch → absolute, relative and baseline-normalized band powers |
-| analyzer | `artifacts` | Blink/jaw (frontal amplitude) and motion (IMU) → events |
-| analyzer | `cbramod` | `ModelAnalyzer` for `braindecode/cbramod-pretrained` (`[models]` extra); resamples to the model's rate, maps channels by position |
-| sink | `recorder` | Parquet, `critical = True` |
-| sink | `export` | CSV / EDF+ at session close |
+
+
+| Kind     | Plugin        | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| source   | `openmuse`  | Connects directly to a Muse S Athena over Bluetooth through OpenMuse, with no phone app. It finds the strongest headband in range, or uses `address`. It then sends the startup sequence for `preset` (default p1041: 8 EEG, 16 optics, accelerometer and gyroscope, battery). It waits `settle_s` to see which sensors stream before declaring them. Sample times are rebuilt from the packet counters and the arrival time, using the minimum offset over 60 s to remove jitter and follow drift. Lost subpackets show up as index gaps. Packets that arrive during settle are decoded in order before live decoding starts. After a disconnect it reconnects and accounts for the outage. EEG is in µV (`(raw − 8192) × 0.0885`). |
+| source   | `synthetic` | Generates sines plus noise on configurable channels, optionally with fake frontal blinks, simulated sample loss (`gaps`), and an accelerometer and battery. It can run in real time or as fast as the pipeline allows. Used for tests, demos and plugin development without hardware.                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| source   | `replay`    | Plays back a recorded session (raw streams and events) through the same pipeline for offline analysis. Speed 0 means as fast as possible with no drops (backpressure). It keeps the original timestamps and sample indices, so gaps are reproduced exactly.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| analyzer | `quality`   | Checks each EEG channel's contact and noise in 1 s windows. It emits `quality/mask` (0 ok, 1 poor contact, 2 noisy, 3 flat), `quality/std`, and the share of usable channels. Other analyzers read the mask through `QualityMask` to skip bad channels. The report gives the percentage of usable data per electrode.                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| analyzer | `filter`    | Display filter: 1–40 Hz band-pass plus a 50/60 Hz notch, applied causally to EEG. It outputs `filter/eeg` and never changes the raw data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| analyzer | `bandpower` | Welch power spectrum per window (default 2 s, updated every 0.5 s). Outputs: absolute (`abs`) and relative (`rel`) power per channel and band; `mean_rel`, the average over channels that pass the quality check; the spectrum (`psd`); and `norm`, power relative to the eyes-open baseline once calibration has run. Default bands: delta 1–4, theta 4–8, alpha 8–13, beta 13–30, gamma 30–45 Hz.                                                                                                                                                                                                                                                                                                                              |
+| analyzer | `baseline`  | Runs the calibration protocol: 60 s eyes open, then 60 s eyes closed. It computes a personal band-power baseline from those periods and publishes `baseline.ready`, which `bandpower` uses for `norm`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| analyzer | `artifacts` | Detects blinks and jaw clenches from the amplitude on frontal (AF7/AF8) and temporal channels, and movement from the accelerometer. Each is emitted as an event with a duration, and the report gives counts per minute.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| analyzer | `cbramod`   | A `ModelAnalyzer` for `braindecode/cbramod-pretrained` (4.9M parameters, BSD-3). It needs the `[models]` extra and weights fetched with `muse models pull cbramod`; nothing is downloaded during a session. Each 4 s window (default step 1 s) is band-passed to 0.3–75 Hz, notch-filtered, resampled to 200 Hz and scaled to units of 100 µV. The model output is averaged into a 200-value `embedding`. With a `head` from `muse train-probe`, it also emits class probabilities. Takes about 20 ms per window on CPU.                                                                                                                                                                                                        |
+| sink     | `recorder`  | Saves every raw stream losslessly to Parquet, plus events and session metadata. Data is written every `flush_s` (default 5 s) as complete part files, so a crash loses at most one buffer. Parts are merged when the session closes, or later with `sessions repair`. Critical: if it fails, the session stops.                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| sink     | `export`    | When the session closes, writes CSV, or EDF+ with EEG first and markers and events as annotations. Uses a built-in EDF+ writer, because pyedflib has no Python 3.13 Windows wheel.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## 9. Example plugin
 

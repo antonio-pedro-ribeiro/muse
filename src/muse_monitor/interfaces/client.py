@@ -93,6 +93,15 @@ class RemoteFacade:
     async def get_job(self, job_id: str) -> dict[str, Any]:
         return await self._json("GET", f"/jobs/{job_id}")
 
+    async def pull_model(self, plugin: str, revision: str | None = None) -> dict[str, Any]:
+        return await self._json("POST", f"/models/{plugin}/pull", params={"revision": revision} if revision else None,
+                                timeout=1800.0)
+
+    async def train_probe(self, sessions: list[str], plugin: str = "cbramod", label_from: str = "markers",
+                          out: str = "head.npz", options: dict[str, Any] | None = None) -> dict[str, Any]:
+        body = {"sessions": sessions, "plugin": plugin, "label_from": label_from, "out": out, "options": options}
+        return await self._json("POST", "/probes", json=body, timeout=3600.0)
+
     async def export(self, sid: str, fmt: str, out: Path | None = None) -> list[str]:
         r = await self._req("POST", f"/sessions/{sid}/export", params={"format": fmt}, timeout=600.0)
         disp = r.headers.get("content-disposition", "")

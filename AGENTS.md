@@ -48,6 +48,9 @@ uv run muse-check scan                    # list Muse headbands in range
 uv run muse-check test                    # connect, stream 10 s, report rates/loss/battery/EEG contact
 uv run muse-check test --duration 30 --save raw.txt   # also save raw packets (OpenMuse text format)
 uv run OpenMuse stream --address <MAC>    # publish LSL streams
+uv run muse run --calibrate --duration 10m   # live session: dashboard + recording
+uv sync --extra models && uv run muse models pull cbramod   # model weights (M5)
+uv run muse train-probe ID ID ID --label-from calibration   # probe vs band power
 ```
 
 `muse-check test` exits 0 (PASS) when EEG arrives at ≥90% of 256 Hz with ≤2% of subpackets missing.

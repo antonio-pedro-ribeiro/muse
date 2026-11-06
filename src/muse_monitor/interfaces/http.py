@@ -192,6 +192,15 @@ def create_app(facade: KernelFacade, token: str | None = None) -> FastAPI:
     async def repair(sid: str) -> dict[str, Any]:
         return facade.repair(sid)
 
+    @app.post(f"{P}/models/{{plugin}}/pull", dependencies=deps)
+    async def pull_model(plugin: str, revision: str | None = None) -> dict[str, Any]:
+        return await facade.pull_model(plugin, revision)
+
+    @app.post(f"{P}/probes", dependencies=deps)
+    async def train_probe(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Body: {sessions, plugin, label_from, out, options}. The head is written on the server."""
+        return await facade.train_probe(**body)
+
     @app.websocket(f"{P}/sessions/{{sid}}/live")
     async def live(ws: WebSocket, sid: str, streams: str | None = None, max_hz: float = 20.0) -> None:
         if not authorized(ws.headers.get("authorization"), ws.query_params.get("token")):

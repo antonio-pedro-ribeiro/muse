@@ -20,6 +20,15 @@ dependencies = [
     "websockets>=13",
 ]
 
+[project.optional-dependencies]
+models = [
+    "braindecode>=1.2",
+    "huggingface-hub>=0.24",
+    "safetensors>=0.4",
+    "scikit-learn>=1.5",
+    "torch>=2.5",
+]
+
 [project.scripts]
 muse = "muse_monitor.interfaces.cli:main"
 muse-check = "muse_monitor.check:main"
@@ -33,6 +42,7 @@ filter = "muse_monitor.plugins.filter:Filter"
 baseline = "muse_monitor.plugins.baseline:Baseline"
 bandpower = "muse_monitor.plugins.bandpower:BandPower"
 artifacts = "muse_monitor.plugins.artifacts:Artifacts"
+cbramod = "muse_monitor.plugins.cbramod:CBraMod"
 recorder = "muse_monitor.plugins.recorder:Recorder"
 export = "muse_monitor.plugins.export:Export"
 

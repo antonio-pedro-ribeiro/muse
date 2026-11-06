@@ -31,9 +31,10 @@ muse run [-c pipeline.toml] [--no-record] [--duration 10m] [--calibrate]
          # live Rich dashboard; keys: m = marker, q = stop
 muse sessions list | show ID | export ID --format csv|edf | repair ID
 muse analyze ID [-c pipeline.toml] [--report out.html]       # offline replay
-muse models pull PLUGIN
-muse train-probe --plugin cbramod --sessions ID... --label-from markers --out head.pt
-         # cross-validation holds out whole sessions; prints per-fold scores
+muse models pull PLUGIN [--revision SHA]
+muse train-probe ID... [--plugin cbramod] [--label-from markers|calibration] [--out head.npz]
+         # cross-validation holds out whole sessions (one session: time blocks, flagged optimistic);
+         # prints per-fold balanced accuracy for the probe and for band power, and a verdict
 muse serve [--host 127.0.0.1] [--port 8765]
 ```
 
@@ -58,6 +59,8 @@ Exit codes: `0` ok, `1` runtime error, `2` usage/config error, `3` device not fo
 | `GET /sessions/{id}/reports` · `GET /sessions/{id}/reports/{name}` | HTML reports |
 | `POST /sessions/{id}/export?format=csv\|edf` | File download (CSV as zip) |
 | `POST /sessions/{id}/repair` | Merge leftover parts after a crash |
+| `POST /models/{plugin}/pull?revision=` | Download a model plugin's pinned weights |
+| `POST /probes` | Train a probe head (`{sessions, plugin, label_from, out, options}`); the head is written on the server |
 
 Errors use RFC 9457 problem JSON.
 

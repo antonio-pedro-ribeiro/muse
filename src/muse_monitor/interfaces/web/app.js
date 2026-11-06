@@ -26,7 +26,12 @@
     trends: "How the measurements change over the last minutes. Cards appear once they have data (for example, the baseline comparison after you calibrate).",
     signal: "The signal itself: the filtered EEG traces and the frequency spectrum.",
     events: "What happened: markers, calibration, blinks, jaw clenching, movement, and all earlier descriptions.",
-    sessions: "All recorded sessions, newest first. Click a row to open it.",
+    sessions: "All recorded sessions, newest first. Click a row to open it; tick sessions to rename, export or delete them.",
+    select: "Select sessions to rename (one at a time), export or delete them. The box in the header selects every session shown.",
+    importBtn: "Adds sessions from a session archive (.zip) made with Export → Session archive, here or on another computer. Sessions that already exist are skipped, never overwritten.",
+    exportMany: "Session archive: everything about the selected sessions in one .zip that Import (here or on another computer) reads back. CSV: every stream and the events as spreadsheet files. EDF+: a file per session for EEG tools such as EDFbrowser, EEGLAB or MNE. Several sessions go into one .zip.",
+    deleteMany: "Permanently deletes the selected recordings and everything made from them (analyses, reports). This cannot be undone; export a session archive first to keep a copy. A session that is still recording cannot be deleted.",
+    renameOne: "Changes the label of the selected session. Leave it empty to remove the label.",
     started: "When the session started, in your local time.",
     duration: "How long the session lasted.",
     device: "The headband (or test source) the data came from.",
@@ -37,7 +42,7 @@
     replay: "Plays this recording back on the Live page as if it were happening now, at the chosen speed, with the analyzers it was recorded with plus the session description. Markers and calibration from the recording are replayed too. Nothing is saved; the recording is not changed. Only one live session can run at a time.",
     replaying: "This is a recorded session being played back, not live data. Times shown are the original recording times. Adding markers and calibrating are off during a replay.",
     analyze: "Runs the analyzers over the whole recording as fast as possible, saves their results next to the raw data, refreshes the summary and charts on this page, and creates an HTML report. The raw recording is never changed.",
-    export: "Download the data: CSV (every stream plus events, zipped) for spreadsheets or your own scripts, or EDF+ for EEG tools such as EDFbrowser, EEGLAB or MNE (markers and artifacts become annotations).",
+    export: "Download the data: a session archive (.zip) that Import reads back here or on another computer, CSV (every stream plus events, zipped) for spreadsheets or your own scripts, or EDF+ for EEG tools such as EDFbrowser, EEGLAB or MNE (markers and artifacts become annotations).",
     summary: "Key numbers and a plain-language description of the session, for the whole recording and for each marked or calibration segment. It describes measurements, not states of mind.",
     timeline: "The recording on one time axis. Pick a segment to zoom every chart to it. Dashed lines are markers.",
     charts: "Charts from the analyzers over the whole session. Run Analyze to create or refresh them.",
@@ -126,6 +131,14 @@
   }
   const recorded = (sess) => ((sess.pipeline || {}).sink || []).some((s) => s.plugin === "recorder");
   const report = (reports, suffix) => (reports || []).find((r) => r.title.endsWith(suffix));
+  async function download(ids, format) {
+    const res = await api("/sessions/export", { method: "POST", json: { ids, format }, raw: true });
+    const name = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") || "");
+    const a = h("a", { href: URL.createObjectURL(await res.blob()), download: name ? name[1] : `sessions.${format === "edf" && ids.length === 1 ? "edf" : "zip"}` });
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  const EXPORTS = [["session", "Session archive (.zip)"], ["csv", "CSV (zip)"], ["edf", "EDF+"]];
+  let flash = null;                                  // message shown once on the next Sessions page render
 
   // ---------- schema-driven config form ----------
   function schemaForm(schema, values = {}) {
@@ -398,10 +411,18 @@
   async function pageSessions() {
     const list = await api("/sessions");
     const search = h("input", { type: "search", placeholder: "Search label or description", size: 28, "aria-label": "Search sessions" });
+    const selected = new Set();
     const tbody = h("tbody");
+    const bar = h("div", { class: "selection-bar", hidden: true });
+    const msg = h("div");
+    if (flash) { msg.replaceChildren(flash); flash = null; }
+
     const rows = list.map((s) => {
       const k = keyNumbers(s, s.reports);
+      const box = h("input", { type: "checkbox", "aria-label": `Select ${s.label || s.id}` });
+      box.addEventListener("change", () => { box.checked ? selected.add(s.id) : selected.delete(s.id); update(); });
       const tr = h("tr", { class: "link", onclick: () => (location.hash = `#/session/${s.id}`) },
+        h("td", { class: "pick", onclick: (e) => { e.stopPropagation(); if (e.target !== box) { box.checked = !box.checked; box.dispatchEvent(new Event("change")); } } }, box),
         h("td", {}, when(s.started_at)), h("td", {}, s.label || h("span", { class: "muted" }, "—")),
         h("td", {}, sessionLength(s)),
         h("td", {}, s.device ? s.device.model || s.device.name : "–"),
@@ -409,19 +430,102 @@
         h("td", { class: "summary-cell" }, k.first || h("span", { class: "muted" }, "—")),
         h("td", {}, statusChip(s.status)));
       tr.dataset.text = `${s.label || ""} ${k.first}`.toLowerCase();
+      tr.session = s; tr.box = box;
       return tr;
     });
     tbody.append(...rows);
+    const all = h("input", { type: "checkbox", "aria-label": "Select all shown sessions" });
+    all.addEventListener("change", () => {
+      for (const tr of rows) if (!tr.hidden) { tr.box.checked = all.checked; all.checked ? selected.add(tr.session.id) : selected.delete(tr.session.id); }
+      update();
+    });
     search.addEventListener("input", () => {
       const q = search.value.trim().toLowerCase();
       for (const tr of rows) tr.hidden = !!q && !tr.dataset.text.includes(q);
+      update();
     });
-    app.replaceChildren(h("div", { class: "row" }, heading("h1", "Sessions", HELP.sessions), h("span", { class: "spacer" }), list.length ? search : null),
+
+    // selection bar: count, Rename (one), Export, Delete; Rename and Delete open inline forms in the bar
+    function update(mode) {
+      const n = selected.size;
+      bar.hidden = n === 0;
+      const shown = rows.filter((tr) => !tr.hidden);
+      all.checked = shown.length > 0 && shown.every((tr) => tr.box.checked);
+      all.indeterminate = !all.checked && shown.some((tr) => tr.box.checked);
+      for (const tr of rows) tr.classList.toggle("selected", tr.box.checked);
+      if (!n) return;
+      const ids = [...selected];
+      const clear = h("button", { class: "link-btn", onclick: () => { selected.clear(); rows.forEach((tr) => (tr.box.checked = false)); update(); } }, "Clear");
+      if (mode === "rename") {
+        const s0 = list.find((x) => x.id === ids[0]);
+        const input = h("input", { type: "text", value: s0.label || "", size: 32, maxlength: 200, "aria-label": "New label" });
+        const save = async () => {
+          try { await api(`/sessions/${ids[0]}`, { method: "PATCH", json: { label: input.value } }); flash = notice(`Renamed to “${input.value.trim() || "(no label)"}”.`, "ok"); route(); }
+          catch (e) { msg.replaceChildren(notice(e.message, true)); }
+        };
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); if (e.key === "Escape") update(); });
+        bar.replaceChildren(h("span", {}, "Label:"), input, h("button", { class: "primary", onclick: save }, "Save"),
+          h("button", { onclick: () => update() }, "Cancel"), info(HELP.renameOne, "Rename"));
+        input.focus(); input.select();
+        return;
+      }
+      if (mode === "delete") {
+        const go = h("button", { class: "danger-solid", onclick: async () => {
+          go.disabled = true;
+          const done = [], failed = [];
+          for (const id of ids) {
+            try { await api(`/sessions/${id}`, { method: "DELETE" }); done.push(id); }
+            catch (e) { failed.push(`${id}: ${e.message}`); }
+          }
+          flash = notice(`Deleted ${done.length} session${done.length === 1 ? "" : "s"}.` + (failed.length ? ` Not deleted: ${failed.join("; ")}` : ""), failed.length ? true : "ok");
+          route();
+        } }, `Delete ${n}`);
+        bar.replaceChildren(h("strong", {}, `Permanently delete ${n} session${n === 1 ? "" : "s"}? This cannot be undone.`),
+          go, h("button", { onclick: () => update() }, "Cancel"));
+        return;
+      }
+      const exportMenu = h("details", { class: "menu" }, h("summary", { class: "btn" }, "Export ▾"),
+        h("div", { class: "menu-items" }, EXPORTS.map(([fmt, label]) => h("button", { onclick: async () => {
+          exportMenu.open = false;
+          msg.replaceChildren(notice(`Preparing ${label}…`));
+          try { await download(ids, fmt); msg.replaceChildren(); }
+          catch (e) { msg.replaceChildren(notice(e.message, true)); }
+        } }, label))));
+      bar.replaceChildren(h("strong", {}, `${n} selected`),
+        h("button", { onclick: () => update("rename"), disabled: n !== 1, title: n !== 1 ? "Select one session to rename it" : null }, "Rename"),
+        exportMenu, info(HELP.exportMany, "Export"),
+        h("button", { class: "danger", onclick: () => update("delete") }, "Delete"), info(HELP.deleteMany, "Delete"),
+        h("span", { class: "spacer" }), clear);
+    }
+
+    // import: a session archive from disk
+    const file = h("input", { type: "file", accept: ".zip,application/zip", hidden: true });
+    const importBtn = h("button", { onclick: () => file.click() }, "Import…");
+    file.addEventListener("change", async () => {
+      const f = file.files[0];
+      if (!f) return;
+      importBtn.disabled = true;
+      msg.replaceChildren(notice(`Importing ${f.name}…`));
+      try {
+        const r = await api("/sessions/import", { method: "POST", body: f, headers: { "Content-Type": "application/zip" } });
+        const parts = [];
+        if (r.imported.length) parts.push(`Imported ${r.imported.length} session${r.imported.length === 1 ? "" : "s"}: ${r.imported.map((x) => x.label || x.id).join(", ")}.`);
+        if (r.skipped.length) parts.push(`Skipped ${r.skipped.length}: ${r.skipped.map((x) => `${x.session} (${x.reason})`).join("; ")}.`);
+        flash = notice(parts.join(" ") || "Nothing to import.", r.imported.length ? "ok" : "warn");
+        route();
+      } catch (e) { msg.replaceChildren(notice(`Import failed: ${e.message}`, true)); importBtn.disabled = false; file.value = ""; }
+    });
+
+    app.replaceChildren(
+      h("div", { class: "row" }, heading("h1", "Sessions", HELP.sessions), h("span", { class: "spacer" }),
+        list.length ? search : null, importBtn, info(HELP.importBtn, "Import"), file),
+      msg, bar,
       list.length ? h("div", { class: "card table-wrap" }, h("table", {},
-        h("thead", {}, h("tr", {}, th("Started", HELP.started), th("Label", HELP.label), th("Duration", HELP.duration),
+        h("thead", {}, h("tr", {}, h("th", { class: "pick", title: HELP.select }, all), th("Started", HELP.started),
+          th("Label", HELP.label), th("Duration", HELP.duration),
           th("Device", HELP.device), th("Usable", HELP.usable), th("Data received", HELP.received),
           th("Summary", HELP.summaryCol), th("Status", HELP.status))), tbody))
-        : notice("No recordings yet. Start one on the Live page."));
+        : notice("No recordings yet. Start one on the Live page, or Import a session archive."));
   }
 
   async function pageSession(id) {
@@ -458,14 +562,10 @@
       } catch (e) { msg.replaceChildren(notice(e.message, true)); replayBtn.disabled = false; }
     } }, "Replay");
     const exportMenu = h("details", { class: "menu" }, h("summary", { class: "btn" }, "Export ▾"),
-      h("div", { class: "menu-items" }, ["csv", "edf"].map((f) => h("button", { onclick: async () => {
+      h("div", { class: "menu-items" }, EXPORTS.map(([fmt, label]) => h("button", { onclick: async () => {
         exportMenu.open = false;
-        try {
-          const res = await api(`/sessions/${id}/export?format=${f}`, { method: "POST", raw: true });
-          const a = h("a", { href: URL.createObjectURL(await res.blob()), download: `${id}.${f === "csv" ? "zip" : f}` });
-          a.click(); URL.revokeObjectURL(a.href);
-        } catch (e) { msg.replaceChildren(notice(e.message, true)); }
-      } }, f === "csv" ? "CSV (zip)" : "EDF+"))));
+        try { await download([id], fmt); } catch (e) { msg.replaceChildren(notice(e.message, true)); }
+      } }, label))));
 
     // summary
     const k = keyNumbers(sess, allReports);

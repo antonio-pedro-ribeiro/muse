@@ -10,6 +10,8 @@ import json
 import logging
 import math
 import re
+import shutil
+import tempfile
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -437,6 +439,65 @@ class KernelFacade:
         exporter = self.registry.get("export", "sink")
         files = exporter.export_session(self.session_dir(session_id), fmt, out)  # type: ignore[attr-defined]
         return [str(f) for f in files]
+
+    # -- session management -------------------------------------------------------------------------
+    def rename_session(self, session_id: str, label: str | None) -> dict[str, Any]:
+        """Sets (or clears, with an empty label) a session's label, live or recorded."""
+        session_id = self._check_id(session_id)
+        label = (label or "").strip() or None
+        if label is not None and len(label) > 200:
+            raise ConfigError("labels are limited to 200 characters")
+        live = self.active.get(session_id)
+        if live is not None:
+            live.info.label = label                       # the recorder writes it with the session metadata
+        path = self.data_dir / session_id / "session.json"
+        if path.is_file():
+            info = json.loads(path.read_text(encoding="utf-8"))
+            info["label"] = label
+            tmp = path.with_name("session.json.tmp")
+            tmp.write_text(json.dumps(info, indent=2), encoding="utf-8")
+            tmp.replace(path)
+        elif live is None:
+            raise NotFound(f"unknown session {session_id!r}")
+        return self.get_session(session_id)
+
+    def delete_session(self, session_id: str) -> dict[str, Any]:
+        """Deletes a recording and everything derived from it. Refuses a session that is still running."""
+        session_id = self._check_id(session_id)
+        live = self.active.get(session_id)
+        if live is not None and not live.done.is_set():
+            raise Busy(f"session {session_id} is still running; stop it first")
+        shutil.rmtree(self.session_dir(session_id))
+        self.active.pop(session_id, None)
+        return {"deleted": session_id}
+
+    def export_sessions(self, session_ids: list[str], fmt: str, out: Path) -> Path:
+        """One file for one or more sessions: a session archive (.zip, importable), or CSV / EDF+ (one session:
+        its file or zip; several: a zip with a folder per session)."""
+        from ..archive import bundle, export_archive
+        ids = list(dict.fromkeys(self._check_id(s) for s in session_ids))
+        if not ids:
+            raise ConfigError("select at least one session")
+        dirs = [self.session_dir(s) for s in ids]
+        for s in ids:
+            if s in self.active and not self.active[s].done.is_set():
+                raise Busy(f"session {s} is still recording")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if fmt == "session":
+            return export_archive(dirs, out)
+        if fmt not in ("csv", "edf"):
+            raise ConfigError(f"unknown export format {fmt!r}; use session, csv or edf")
+        with tempfile.TemporaryDirectory() as tmp:
+            return bundle({s: [Path(f) for f in self.export(s, fmt, Path(tmp) / s / (f"{s}.edf" if fmt == "edf" else ""))]
+                           for s in ids}, out)
+
+    def import_sessions(self, path: Path) -> dict[str, Any]:
+        """Imports the sessions in a session archive. Existing sessions are skipped, never overwritten."""
+        from ..archive import ArchiveError, import_archive
+        try:
+            return import_archive(Path(path), self.data_dir, self._check_id)
+        except ArchiveError as exc:
+            raise ConfigError(str(exc)) from exc
 
     def repair(self, session_id: str) -> dict[str, Any]:
         if session_id in self.active and not self.active[session_id].done.is_set():

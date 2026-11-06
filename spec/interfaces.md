@@ -29,7 +29,9 @@ muse check                             # existing connectivity test
 
 muse run [-c pipeline.toml] [--no-record] [--duration 10m] [--calibrate]
          # live Rich dashboard; keys: m = marker, q = stop
-muse sessions list | show ID | export ID --format csv|edf | repair ID
+muse sessions list | show ID | repair ID
+muse sessions export ID... --format csv|edf|session [--out PATH]   # session = importable archive (.zip)
+muse sessions rename ID LABEL | delete ID... [--yes] | import FILE.zip
 muse analyze ID [-c pipeline.toml] [--report out.html]       # offline replay
 muse models pull PLUGIN [--revision SHA]
 muse train-probe ID... [--plugin cbramod] [--label-from markers|calibration] [--out head.npz]
@@ -48,6 +50,7 @@ Exit codes: `0` ok, `1` runtime error, `2` usage/config error, `3` device not fo
 | `GET /devices?source=` | Discover devices |
 | `POST /sessions` | Start a live session (pipeline as JSON) |
 | `GET /sessions` · `GET /sessions/{id}` | List / detail + health |
+| `PATCH /sessions/{id}` · `DELETE /sessions/{id}` | Rename (`{label}`) / delete a recording and its derived data (409 while running) |
 | `POST /sessions/{id}/stop` | Stop |
 | `POST /sessions/{id}/replay?speed=` | Play a recording back as a live session (nothing recorded); body `{analyzers}` optional, default: as recorded + `describe` |
 | `POST /sessions/{id}/markers` | Add marker |
@@ -60,10 +63,20 @@ Exit codes: `0` ok, `1` runtime error, `2` usage/config error, `3` device not fo
 | `GET /sessions/{id}/reports` · `GET /sessions/{id}/reports/{name}` | HTML reports |
 | `POST /sessions/{id}/export?format=csv\|edf` | File download (CSV as zip) |
 | `POST /sessions/{id}/repair` | Merge leftover parts after a crash |
+| `POST /sessions/export` | `{ids, format: session|csv|edf}` → one file (several sessions: a zip, a folder each) |
+| `POST /sessions/import` | Body: a session archive (.zip). Returns `{imported, skipped}`; existing sessions are never overwritten |
 | `POST /models/{plugin}/pull?revision=` | Download a model plugin's pinned weights |
 | `POST /probes` | Train a probe head (`{sessions, plugin, label_from, out, options}`); the head is written on the server |
 
 Errors use RFC 9457 problem JSON.
+
+### Session archives
+
+A `.zip` with one folder per session (`<id>/session.json`, `raw/`, `events.jsonl`, `derived/`, `analyses/`,
+`reports/`; generated `export/` files are left out) plus `MUSE-ARCHIVE.json`. Import treats it as untrusted:
+every path must stay inside its session folder (no absolute paths, `..` or drive letters, checked before
+anything is unpacked), the unpacked size (8 GB) and compression ratio are capped, ids must be plain names,
+an existing session is skipped rather than overwritten, and a session is added only after its streams are read.
 
 **WebSocket** `GET /api/v1/sessions/{id}/live?streams=a,b&max_hz=20`:
 
@@ -91,7 +104,7 @@ button and column has an ⓘ explanation; plugin views bring their own (`ViewSpe
 |---|---|
 | Live: start | Source cards (Headband over Bluetooth, Via Mind Monitor, Test signals), label, record toggle; **Advanced** for source options and analyzers (always run in dependency order); link to the last session |
 | Live: running | Header (label, status, elapsed, battery, how data arrives or `replay N×`, Stop); Add marker and Calibrate (hidden in replays); calibration banner with countdown; **Electrode signal** (Signal strength head map, usable share, warning when under half); **Brain waves** (latest description, band columns with 2-minute lines); **Trends**, **Signal**, **Events** sections that appear as their cards get data; **Details** (plugin health, session, device) |
-| Sessions | Table: start, label, length, device, usable share, data received, first line of the description, status; search by label or description |
+| Sessions | Table: start, label, length, device, usable share, data received, first line of the description, status; search by label or description; checkboxes (and select-all) with a selection bar: Rename (one), Export (session archive, CSV, EDF+), Delete (confirmed); **Import…** for session archives |
 | Session | Replay (1/2/5/10×), Analyze, Export menu (CSV, EDF+); **Summary** (key numbers, Signal strength over the session, descriptions for the whole session and each segment); **Timeline** (band power over time and a recorded stream on one axis, segment chips zoom both); **Charts** (whole-session views); **Details** (data completeness, HTML reports, plugin versions, plugin numbers) |
 | Plugins | Status, hints for missing dependencies, every option with default and explanation (reference; linked at the right of the top bar) |
 

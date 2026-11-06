@@ -23,8 +23,9 @@ session. For every command and option, see [usage.md](usage.md).
   in plain language: signal quality, which rhythms stood out compared with your baseline, blinks and movement.
 - **Look back.** Replay any recording on the live screen (at up to 10× speed), re-analyze it, get a
   one-page HTML report, and compare sessions.
-- **Export.** Take your data to a spreadsheet (CSV) or to research tools such as EEGLAB or MNE
-  (EDF+).
+- **Export and organise.** Take your data to a spreadsheet (CSV) or to research tools such as EEGLAB or
+  MNE (EDF+). Rename, delete, back up and import sessions as archives, for example to move them to
+  another computer.
 - **Experiment with AI.** Optionally, let a pretrained EEG model learn to tell your own labelled
   states apart. The app checks honestly whether that does better than simple band power.
 

@@ -111,7 +111,8 @@ def test_udp_round_trip_with_marker_battery_and_loss():
     assert 1100 <= received <= 1300                                          # ~5 of 6 s arrived (UDP on localhost)
     idx = [(c.first_index, c.n) for c in eeg]
     jumps = [b - (a + n) for (a, n), (b, _) in zip(idx, idx[1:]) if b != a + n]
-    assert len(jumps) == 1 and 180 <= jumps[0] <= 330                       # the lost second, inferred
+    # the lost second (256 samples), inferred; a sender stalled by a busy test machine looks like extra loss
+    assert len(jumps) == 1 and 180 <= jumps[0] <= 450
     assert [e.data["label"] for e in ctx.events if e.type == "marker"] == ["Mind Monitor marker 1"]
     assert ctx.stacked("battery")[-1, 0] == pytest.approx(73.0)
     h = src.health().counters

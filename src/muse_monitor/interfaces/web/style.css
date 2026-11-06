@@ -150,3 +150,13 @@ canvas.band-spark { width: 100%; height: 30px; display: block; }
 .summary-top.single { grid-template-columns: 1fr; }
 .summary-map h3 { text-align: center; justify-content: center; display: flex; }
 @media (max-width: 700px) { .summary-top { grid-template-columns: 1fr; } }
+
+/* session management */
+.selection-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; margin: 8px 0;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; }
+th.pick, td.pick { width: 34px; text-align: center; cursor: default; }
+td.pick input, th.pick input { width: 16px; height: 16px; cursor: pointer; vertical-align: middle; }
+tr.selected td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.link-btn { background: none; border: 0; color: var(--accent); padding: 4px; }
+button.danger-solid { background: var(--danger); border-color: var(--danger); color: #fff; }
+.notice.ok { border-color: var(--level-ok); }

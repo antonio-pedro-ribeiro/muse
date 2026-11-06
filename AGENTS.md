@@ -55,6 +55,7 @@ uv run muse run --calibrate --duration 10m   # live session: dashboard + recordi
 uv run muse run --source mindmonitor -o eeg_offset_uv=800   # via the Mind Monitor app (OSC, UDP 5000)
 uv sync --extra models && uv run muse models pull cbramod   # model weights (M5)
 uv run muse train-probe ID ID ID --label-from calibration   # probe vs band power
+uv run muse sessions export ID ID --format session --out backup.zip   # archive; `sessions import` reads it
 ```
 
 `muse-check test` exits 0 (PASS) when EEG arrives at ≥90% of 256 Hz with ≤2% of subpackets missing.

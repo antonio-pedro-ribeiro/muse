@@ -475,16 +475,77 @@ def sessions_show(session_id: str, json_out: JsonOpt = False, server: ServerOpt 
 
 
 @sessions_app.command("export")
-def sessions_export(session_id: str, format: Annotated[str, typer.Option("--format", help="csv | edf")] = "csv",
-                    out: Annotated[Optional[Path], typer.Option(help="Output file or folder.")] = None,
-                    json_out: JsonOpt = False, server: ServerOpt = None, token: TokenOpt = None) -> None:
-    """Export a recorded session to CSV or EDF+."""
+def sessions_export(
+    session_ids: Annotated[list[str], typer.Argument(help="Session ids.")],
+    format: Annotated[str, typer.Option("--format", help="csv | edf | session (an archive that "
+                                                         "`muse sessions import` reads)")] = "csv",
+    out: Annotated[Optional[Path], typer.Option(help="Output file or folder.")] = None,
+    json_out: JsonOpt = False, server: ServerOpt = None, token: TokenOpt = None,
+) -> None:
+    """Export sessions to CSV, EDF+ or a session archive. Several sessions go into one zip."""
     async def go() -> None:
+        f = facade(server, token)
         try:
-            files = await call(facade(server, token).export, session_id, format, out)
+            if len(session_ids) == 1 and format in ("csv", "edf"):
+                files = await call(f.export, session_ids[0], format, out)
+            else:
+                one = session_ids[0]
+                name = (f"{one}.muse.zip" if format == "session" else f"{one}-{format}.zip") if len(session_ids) == 1 \
+                    else f"muse-sessions-{len(session_ids)}-{format}.zip"
+                target = (out / name if out and out.is_dir() else out) or Path(name)
+                files = [str(await call(f.export_sessions, session_ids, format, target))]
         except ValueError as exc:
             raise ConfigError(str(exc)) from exc
         emit(files, json_out, lambda fs: [console.print(f"wrote {x}") for x in fs])
+    run(go())
+
+
+@sessions_app.command("rename")
+def sessions_rename(session_id: str, label: Annotated[str, typer.Argument(help='New label; "" clears it.')],
+                    json_out: JsonOpt = False, server: ServerOpt = None, token: TokenOpt = None) -> None:
+    """Set a session's label."""
+    async def go() -> None:
+        d = await call(facade(server, token).rename_session, session_id, label)
+        emit(d, json_out, lambda x: console.print(f"{x['id']}: {x.get('label') or '(no label)'}"))
+    run(go())
+
+
+@sessions_app.command("delete")
+def sessions_delete(
+    session_ids: Annotated[list[str], typer.Argument(help="Session ids.")],
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Do not ask for confirmation.")] = False,
+    json_out: JsonOpt = False, server: ServerOpt = None, token: TokenOpt = None,
+) -> None:
+    """Delete sessions and everything derived from them (cannot be undone)."""
+    if not yes and not typer.confirm(f"Permanently delete {len(session_ids)} session(s)?"):
+        raise typer.Exit(1)
+
+    async def go() -> None:
+        f = facade(server, token)
+        done = [await call(f.delete_session, sid) for sid in session_ids]
+        emit(done, json_out, lambda ds: [console.print(f"deleted {d['deleted']}") for d in ds])
+    run(go())
+
+
+@sessions_app.command("import")
+def sessions_import(path: Annotated[Path, typer.Argument(help="Session archive (.zip) from `muse sessions export "
+                                                              "--format session` or the web UI.")],
+                    json_out: JsonOpt = False, server: ServerOpt = None, token: TokenOpt = None) -> None:
+    """Import sessions from an archive. Sessions that already exist are skipped, never overwritten."""
+    if not path.is_file():
+        raise typer.BadParameter(f"no such file: {path}")
+
+    async def go() -> None:
+        r = await call(facade(server, token).import_sessions, path)
+
+        def human(d: dict[str, Any]) -> None:
+            for x in d["imported"]:
+                console.print(f"imported {x['id']}  {x.get('label') or ''}")
+            for x in d["skipped"]:
+                console.print(f"[yellow]skipped[/] {x['session']}: {x['reason']}")
+            if not d["imported"] and not d["skipped"]:
+                console.print("nothing to import")
+        emit(r, json_out, human)
     run(go())
 
 

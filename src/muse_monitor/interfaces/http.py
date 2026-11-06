@@ -8,6 +8,7 @@ import io
 import ipaddress
 import json
 import secrets
+import uuid
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,7 @@ from typing import Any
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 
 from ..kernel import APP_VERSION, KernelError, KernelFacade
 from ..sdk import DeviceNotFound
@@ -122,6 +124,50 @@ def create_app(facade: KernelFacade, token: str | None = None) -> FastAPI:
     @app.get(f"{P}/sessions/{{sid}}", dependencies=deps)
     async def session(sid: str) -> dict[str, Any]:
         return facade.get_session(sid)
+
+    # -- session management: rename, delete, export several, import an archive ------------------------
+    def scratch(name: str) -> Path:
+        d = facade.data_dir / ".muse" / "tmp"
+        d.mkdir(parents=True, exist_ok=True)
+        return d / f"{uuid.uuid4().hex}-{name}"
+
+    @app.post(f"{P}/sessions/export", dependencies=deps)
+    async def export_sessions(body: dict[str, Any] = Body(...)) -> FileResponse:
+        """Body: {"ids": [...], "format": "session" | "csv" | "edf"}. One file to download."""
+        ids, fmt = list(body.get("ids") or []), str(body.get("format", "session"))
+        if len(ids) == 1:
+            name = f"{ids[0]}.muse.zip" if fmt == "session" else f"{ids[0]}.edf" if fmt == "edf" else f"{ids[0]}-csv.zip"
+        else:
+            name = f"muse-sessions-{len(ids)}-{fmt}.zip"
+        out = await asyncio.to_thread(facade.export_sessions, ids, fmt, scratch(name))
+        return FileResponse(out, filename=name, background=BackgroundTask(out.unlink, missing_ok=True))
+
+    @app.post(f"{P}/sessions/import", dependencies=deps)
+    async def import_sessions(request: Request) -> dict[str, Any]:
+        """Body: a session archive (.zip) as the raw request body. Existing sessions are skipped."""
+        from ..archive import MAX_IMPORT_BYTES
+        path, size = scratch("import.zip"), 0
+        try:
+            with open(path, "wb") as f:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > MAX_IMPORT_BYTES:
+                        raise HTTPException(413, "archive too large")
+                    f.write(chunk)
+            if not size:
+                raise HTTPException(422, "empty upload: send the archive as the request body")
+            return await asyncio.to_thread(facade.import_sessions, path)
+        finally:
+            path.unlink(missing_ok=True)
+
+    @app.patch(f"{P}/sessions/{{sid}}", dependencies=deps)
+    async def rename_session(sid: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Body: {"label": "..."} (empty or null clears it)."""
+        return facade.rename_session(sid, body.get("label"))
+
+    @app.delete(f"{P}/sessions/{{sid}}", dependencies=deps)
+    async def delete_session(sid: str) -> dict[str, Any]:
+        return await asyncio.to_thread(facade.delete_session, sid)
 
     @app.post(f"{P}/sessions/{{sid}}/replay", status_code=201, dependencies=deps)
     async def replay(sid: str, speed: float = 1.0,

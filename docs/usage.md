@@ -133,7 +133,10 @@ and missing samples, followed by each analyzer's report.
 |---|---|
 | `muse sessions list [--since 7d] [--label TEXT] [--mode live\|offline\|all]` | Lists sessions, newest first: start, label, duration, status and gaps. `offline` lists analysis runs. |
 | `muse sessions show ID` | Shows metadata, device, firmware, per-stream statistics and analyzer reports. |
-| `muse sessions export ID --format csv\|edf [--out PATH]` | CSV: one file per stream plus events. EDF+: one file for EEG tools (EDFbrowser, EEGLAB, MNE), with markers, artifacts and gaps as annotations. `--out` can be a file or a folder. |
+| `muse sessions export ID... --format csv\|edf\|session [--out PATH]` | CSV: one file per stream plus events. EDF+: one file for EEG tools (EDFbrowser, EEGLAB, MNE), with markers, artifacts and gaps as annotations. `session`: a session archive (.zip) with everything about the session, which `import` reads back. Several sessions go into one zip. `--out` can be a file or a folder. |
+| `muse sessions rename ID LABEL` | Sets the label; `""` removes it. |
+| `muse sessions delete ID... [--yes]` | Permanently deletes recordings and everything made from them. Asks first unless `--yes`; a session that is still recording can't be deleted. |
+| `muse sessions import FILE.zip` | Adds the sessions in a session archive (from this or another computer). Sessions that already exist are skipped, never overwritten. |
 | `muse sessions repair ID` | Finishes a session that ended in a crash: merges the partial files and marks it stopped. |
 
 Session status:
@@ -256,12 +259,26 @@ A table of all recordings, newest first: start time, label, length, device, usab
 contact), data received, the first line of the description, and status. Use the search box to filter
 by label or description. Click a row to open the session.
 
+**Managing sessions.** Tick the box at the start of a row (the box in the header selects every session
+shown). A bar appears above the table:
+
+- **Rename** (one session selected): type the new label and press Enter or **Save**. Leave it empty to
+  remove the label.
+- **Export ▾**: *Session archive (.zip)* keeps everything about the sessions, for a backup or another
+  computer; *CSV (zip)* or *EDF+* for other tools. Several sessions go into one zip.
+- **Delete**: asks for confirmation, then deletes the recordings and everything made from them. This
+  can't be undone, so export a session archive first if you may want them back. A session that is still
+  recording can't be deleted.
+
+**Import…** (top right) adds the sessions in a session archive. Sessions that already exist are
+skipped, never overwritten, and the page says what was imported or skipped.
+
 ### Session
 
 - **Actions:** **Replay** at 1×, 2×, 5× or 10× plays the recording on the Live page as if it were
   happening now (nothing is saved; markers and calibration are replayed; marker and calibrate
   controls are off). **Analyze** runs the analyzers over the whole recording and refreshes this page.
-  **Export ▾** downloads CSV (zip) or EDF+.
+  **Export ▾** downloads a session archive (.zip), CSV (zip) or EDF+.
 - **Summary:** length, usable share, data received, blinks per minute and alpha share, then the session
   description for the whole recording and for each marked or calibration segment. Beside it, *Signal
   strength over the session* shows each electrode's share of the session with good contact (green 80%

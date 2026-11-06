@@ -51,6 +51,35 @@ class RemoteFacade:
     async def start_session(self, pipeline: dict[str, Any]) -> dict[str, Any]:
         return await self._json("POST", "/sessions", json=pipeline, timeout=120.0)
 
+    async def rename_session(self, sid: str, label: str | None) -> dict[str, Any]:
+        return await self._json("PATCH", f"/sessions/{sid}", json={"label": label})
+
+    async def delete_session(self, sid: str) -> dict[str, Any]:
+        return await self._json("DELETE", f"/sessions/{sid}")
+
+    async def export_sessions(self, ids: list[str], fmt: str, out: Path) -> Path:
+        async with self.http.stream("POST", "/sessions/export", json={"ids": ids, "format": fmt}, timeout=1800.0) as r:
+            if r.status_code >= 400:
+                body = await r.aread()
+                try:
+                    detail = json.loads(body).get("detail", "")
+                except ValueError:
+                    detail = body.decode(errors="replace")
+                raise _ERRORS.get(r.status_code, KernelError)(f"{r.status_code}: {detail}")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with open(out, "wb") as f:
+                async for chunk in r.aiter_bytes():
+                    f.write(chunk)
+        return out
+
+    async def import_sessions(self, path: Path) -> dict[str, Any]:
+        async def chunks():                     # the async client needs an async body; 1 MB at a time
+            with open(path, "rb") as f:
+                while block := f.read(1 << 20):
+                    yield block
+        return await self._json("POST", "/sessions/import", content=chunks(),
+                                headers={"Content-Type": "application/zip"}, timeout=3600.0)
+
     async def replay_session(self, sid: str, speed: float = 1.0, analyzers: list[str] | None = None
                              ) -> dict[str, Any]:
         return await self._json("POST", f"/sessions/{sid}/replay", params={"speed": speed},

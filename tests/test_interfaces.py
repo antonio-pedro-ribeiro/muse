@@ -104,3 +104,30 @@ def test_cli_json_commands(data_dir: Path, tmp_path: Path):
     bad.write_text('[source]\nplugin = "synthetic"\nnope = 1\n', encoding="utf-8")
     assert runner.invoke(cli, ["run", "-c", str(bad), "--json"]).exit_code == 2
     assert runner.invoke(cli, ["sessions", "show", "MISSING"]).exit_code == 1
+
+
+def test_api_replay_recorded_session_live(data_dir: Path):
+    """A recording plays back as a live session: its analyzers plus describe, its markers, nothing recorded."""
+    rec = {"source": {"plugin": "synthetic", "realtime": False, "duration_s": 70, "start_time": 1.7e9,
+                      "script": [[0.0, "eyes open", {"20": 8.0}], [35.0, "eyes closed", {"10": 25.0}]]},
+           "analyzer": [{"plugin": "quality"}, {"plugin": "bandpower"}], "sink": [{"plugin": "recorder"}]}
+    with TestClient(create_app(KernelFacade(data_dir))) as client:
+        sid = client.post("/api/v1/sessions", json=rec).json()["id"]
+        while client.get(f"/api/v1/sessions/{sid}").json()["active"]:
+            time.sleep(0.1)
+        before = sorted(p.name for p in data_dir.iterdir())
+        assert client.post(f"/api/v1/sessions/{sid}/replay?speed=0").status_code == 422      # speed > 0
+        r = client.post(f"/api/v1/sessions/{sid}/replay?speed=100")
+        assert r.status_code == 201, r.text
+        rep = r.json()
+        assert rep["label"] == "Replay of " + sid + " (100×)" and rep["pipeline"]["source"]["plugin"] == "replay"
+        assert [a["plugin"] for a in rep["pipeline"]["analyzer"]] == ["quality", "bandpower", "describe"]
+        assert client.post(f"/api/v1/sessions/{sid}/replay").status_code == 409             # one live session
+        while client.get(f"/api/v1/sessions/{rep['id']}").json()["active"]:
+            time.sleep(0.1)
+        done = client.get(f"/api/v1/sessions/{rep['id']}").json()
+        assert done["status"] == "stopped" and done["stats"]["eeg"]["samples"] == 70 * 256
+        text = next(r for r in done["reports"] if r["title"].endswith("Session description"))
+        assert any(n.startswith("“eyes closed”") for n in text["notes"])                    # markers replayed
+        assert sorted(p.name for p in data_dir.iterdir()) == before                          # nothing recorded
+        assert client.post("/api/v1/sessions/NOSUCHSESSION/replay").status_code == 404

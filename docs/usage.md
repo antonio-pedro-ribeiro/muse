@@ -223,8 +223,14 @@ and status. Click a row to open the session.
 
 The page for one recording:
 
-- **Analyze offline:** replays the recording through the analyzers and creates a report. A progress
-  bar shows while it runs.
+- **Replay** (with a speed: 1×, 2×, 5× or 10×): plays the recording back on the **Live** page as if it
+  were happening now, with the analyzers it was recorded with plus the session description, so you can
+  watch the charts and the description unfold. Markers and calibration from the recording are replayed
+  too. A *replay* chip marks it, times shown are the original recording times, and adding markers or
+  calibrating is off. Nothing is saved and the recording isn't changed. Press **Stop** to end it early.
+  Only one live session can run at a time.
+- **Analyze offline:** replays the recording through the analyzers as fast as possible and creates a
+  report. A progress bar shows while it runs.
 - **Export CSV / Export EDF:** downloads the data. CSV comes as a zip with one file per stream plus
   events; EDF+ is a single file for EEG tools.
 - **Recorded signal:** the whole recording for one stream, reduced for display with peaks kept,

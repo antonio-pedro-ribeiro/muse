@@ -49,6 +49,7 @@ Exit codes: `0` ok, `1` runtime error, `2` usage/config error, `3` device not fo
 | `POST /sessions` | Start a live session (pipeline as JSON) |
 | `GET /sessions` · `GET /sessions/{id}` | List / detail + health |
 | `POST /sessions/{id}/stop` | Stop |
+| `POST /sessions/{id}/replay?speed=` | Play a recording back as a live session (nothing recorded); body `{analyzers}` optional, default: as recorded + `describe` |
 | `POST /sessions/{id}/markers` | Add marker |
 | `POST /sessions/{id}/calibrate` | Start the eyes-open/closed protocol |
 | `GET /sessions/{id}/views` | `ViewSpec[]` |

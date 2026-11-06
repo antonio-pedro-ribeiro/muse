@@ -22,7 +22,7 @@ import numpy as np
 
 from ..sdk.types import Chunk, Event, SessionInfo
 from .bus import Subscriber
-from .config import Pipeline, PluginEntry, SourceEntry, data_root, parse_pipeline
+from .config import DEFAULT_ANALYZERS, Pipeline, PluginEntry, SessionSection, SourceEntry, data_root, parse_pipeline
 from .errors import Busy, ConfigError, KernelError, NotFound
 from .ids import ulid
 from .registry import PluginRegistry
@@ -151,6 +151,31 @@ class KernelFacade:
         self.live = session
         self.active[session.info.id] = session
         return self._info(session)
+
+    async def replay_session(self, session_id: str, speed: float = 1.0,
+                             analyzers: list[str] | None = None) -> dict[str, Any]:
+        """Plays a recording back as a live session, nothing recorded: watch the analyzers (and `describe`) work in
+        real time on old data. Default analyzers: the ones it was recorded with, plus `describe` if missing."""
+        session_id = self._check_id(session_id)
+        d = self.session_dir(session_id)
+        parent = SessionInfo.model_validate_json((d / "session.json").read_text(encoding="utf-8"))
+        if parent.mode != "live":
+            raise ConfigError("only recorded sessions can be replayed")
+        if session_id in self.active and not self.active[session_id].done.is_set():
+            raise Busy(f"session {session_id} is still recording")
+        if not 0 < speed <= 100:
+            raise ConfigError("speed must be above 0 and at most 100 (1 = real time)")
+        if analyzers is not None:
+            entries = [PluginEntry(plugin=a) for a in analyzers]
+        else:
+            recorded = parse_pipeline(parent.pipeline).analyzer if parent.pipeline else []
+            entries = list(recorded) or [PluginEntry(plugin=a) for a in DEFAULT_ANALYZERS]
+            describe_ok = any(m.name == "describe" and m.status == "ok" for m in self.registry.manifests("analyzer"))
+            if describe_ok and not any(e.plugin == "describe" for e in entries):
+                entries.append(PluginEntry(plugin="describe"))
+        pipe = Pipeline(session=SessionSection(label=f"Replay of {parent.label or parent.id} ({speed:g}×)"),
+                        source=SourceEntry(plugin="replay", path=str(d), speed=speed), analyzer=entries, sink=[])
+        return await self.start_session(pipe)
 
     async def stop_session(self, session_id: str) -> dict[str, Any]:
         s = self._session(session_id)

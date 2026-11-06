@@ -51,6 +51,11 @@ class RemoteFacade:
     async def start_session(self, pipeline: dict[str, Any]) -> dict[str, Any]:
         return await self._json("POST", "/sessions", json=pipeline, timeout=120.0)
 
+    async def replay_session(self, sid: str, speed: float = 1.0, analyzers: list[str] | None = None
+                             ) -> dict[str, Any]:
+        return await self._json("POST", f"/sessions/{sid}/replay", params={"speed": speed},
+                                json={"analyzers": analyzers} if analyzers is not None else {}, timeout=120.0)
+
     async def stop_session(self, sid: str) -> dict[str, Any]:
         return await self._json("POST", f"/sessions/{sid}/stop", timeout=120.0)
 

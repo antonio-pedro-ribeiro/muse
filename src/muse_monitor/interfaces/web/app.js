@@ -23,6 +23,8 @@
     duration: "How long the session lasted.",
     device: "The headband (or test source) the data came from.",
     gaps: "How many times samples were lost, e.g. Bluetooth dropouts. Gaps are recorded and reported, never filled in.",
+    replay: "Plays this recording back on the Live page as if it were happening now, at the chosen speed, with the analyzers it was recorded with plus the session description. Markers and calibration from the recording are replayed too. Nothing is saved; the recording is not changed. Only one live session can run at a time.",
+    replaying: "This is a recorded session being played back, not live data from the headband. Times shown are the original recording times. Adding markers and calibrating are off during a replay.",
     analyze: "Replays the recording through the analyzers, saves their results next to the raw data and creates an HTML report. The raw recording is never changed; running it again replaces the previous results.",
     exportCsv: "Download every stream and the event list as CSV files (zipped), for spreadsheets or your own scripts.",
     exportEdf: "Download an EDF+ file for EEG tools such as EDFbrowser, EEGLAB or MNE. Markers and artifacts become annotations; gaps are filled with zeros and annotated.",
@@ -184,6 +186,7 @@
   }
 
   function liveView(sess) {
+    const isReplay = ((sess.pipeline || {}).source || {}).plugin === "replay";
     const store = new Store(300);
     const cards = new Map();
     const grid = h("div", { class: "grid" });
@@ -202,11 +205,12 @@
         h("span", { class: "with-info" }, statusChip("running"), info(HELP.status, "status")),
         h("span", { class: "with-info" }, elapsed, info(HELP.elapsed, "elapsed time")),
         h("span", { class: "with-info" }, battery, info(HELP.battery, "battery")),
+        isReplay ? h("span", { class: "with-info" }, h("span", { class: "chip warn" }, "replay"), info(HELP.replaying, "replay")) : null,
         h("span", { class: "spacer" }),
-        markerLabel,
-        h("button", { onclick: async () => { await api(`/sessions/${sess.id}/markers`, { method: "POST", json: { label: markerLabel.value || "marker" } }); markerLabel.value = ""; } }, "Add marker"),
-        info(HELP.marker, "Add marker"),
-        calibrateBtn, info(HELP.calibrate, "Calibrate"),
+        isReplay ? null : [markerLabel,
+          h("button", { onclick: async () => { await api(`/sessions/${sess.id}/markers`, { method: "POST", json: { label: markerLabel.value || "marker" } }); markerLabel.value = ""; } }, "Add marker"),
+          info(HELP.marker, "Add marker"),
+          calibrateBtn, info(HELP.calibrate, "Calibrate")],
         h("button", { class: "danger", onclick: async () => { await api(`/sessions/${sess.id}/stop`, { method: "POST" }); route(); } }, "Stop"),
         info(HELP.stop, "Stop")),
       h("div", { class: "muted" }, `${sess.id} · ${sess.device ? sess.device.name || sess.device.model : ""}`),
@@ -285,6 +289,15 @@
         }
       } catch (e) { msg.replaceChildren(notice(e.message, true)); analyze.disabled = false; }
     } }, "Analyze offline");
+    const speed = h("select", { "aria-label": "Replay speed" },
+      [1, 2, 5, 10].map((x) => h("option", { value: String(x) }, `${x}×`)));
+    const replayBtn = h("button", { onclick: async () => {
+      replayBtn.disabled = true;
+      try {
+        await api(`/sessions/${id}/replay?speed=${speed.value}`, { method: "POST", json: {} });
+        location.hash = "#/live";
+      } catch (e) { msg.replaceChildren(notice(e.message, true)); replayBtn.disabled = false; }
+    } }, "Replay");
     const exportBtn = (fmt) => [h("button", { onclick: async () => {
       try {
         const res = await api(`/sessions/${id}/export?format=${fmt}`, { method: "POST", raw: true });
@@ -344,7 +357,8 @@
     app.replaceChildren(
       h("div", { class: "row" }, h("h1", {}, sess.label || "Session"),
         h("span", { class: "with-info" }, statusChip(sess.status), info(HELP.status, "status")), h("span", { class: "spacer" }),
-        sess.mode === "live" ? [analyze, info(HELP.analyze, "Analyze offline"), exportBtn("csv"), exportBtn("edf")] : null),
+        sess.mode === "live" ? [speed, replayBtn, info(HELP.replay, "Replay"),
+          analyze, info(HELP.analyze, "Analyze offline"), exportBtn("csv"), exportBtn("edf")] : null),
       h("div", { class: "muted" }, `${sess.id} · ${when(sess.started_at)} · ${duration(sess.started_at, sess.ended_at)}${sess.error ? " · " + sess.error : ""}`),
       msg,
       h("div", { class: "grid" },

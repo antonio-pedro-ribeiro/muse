@@ -21,7 +21,8 @@ session. For every command and option, see [usage.md](usage.md).
   so you can find those moments later.
 - **Read a description.** Every 30 seconds, and for the whole session, the app sums up the measurements
   in plain language: signal quality, which rhythms stood out compared with your baseline, blinks and movement.
-- **Look back.** Re-analyze any recording, get a one-page HTML report, and compare sessions.
+- **Look back.** Replay any recording on the live screen (at up to 10× speed), re-analyze it, get a
+  one-page HTML report, and compare sessions.
 - **Export.** Take your data to a spreadsheet (CSV) or to research tools such as EEGLAB or MNE
   (EDF+).
 - **Experiment with AI.** Optionally, let a pretrained EEG model learn to tell your own labelled

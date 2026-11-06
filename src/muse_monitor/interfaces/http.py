@@ -123,6 +123,12 @@ def create_app(facade: KernelFacade, token: str | None = None) -> FastAPI:
     async def session(sid: str) -> dict[str, Any]:
         return facade.get_session(sid)
 
+    @app.post(f"{P}/sessions/{{sid}}/replay", status_code=201, dependencies=deps)
+    async def replay(sid: str, speed: float = 1.0,
+                     body: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+        """Replay a recording as a live session (nothing recorded). Body: optional {"analyzers": [...]}."""
+        return await facade.replay_session(sid, speed, body.get("analyzers"))
+
     @app.post(f"{P}/sessions/{{sid}}/stop", dependencies=deps)
     async def stop(sid: str) -> dict[str, Any]:
         return await facade.stop_session(sid)

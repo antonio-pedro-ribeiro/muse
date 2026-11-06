@@ -5,6 +5,8 @@ Output: the encoder's 200-dim features averaged over channels and patches, so an
 
 from __future__ import annotations
 
+import contextlib
+import io
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -38,7 +40,8 @@ class CBraMod(ModelAnalyzer):
         import torch
         from braindecode.models import CBraMod as Net
         self.torch = torch
-        self.net = Net.from_pretrained(str(path), return_encoder_output=True).eval()
+        with contextlib.redirect_stdout(io.StringIO()):     # braindecode prints "Loading weights ..."
+            self.net = Net.from_pretrained(str(path), return_encoder_output=True).eval()
         self._filters: dict[float, Any] = {}
 
     def _sos(self, rate: float) -> Any:

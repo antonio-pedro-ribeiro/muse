@@ -30,16 +30,21 @@
 
 CI: `uv run pytest -m "not device"`, `ruff`, `pyright --strict` on `sdk/` and `kernel/`.
 
+**Not in place yet:** CI, the Playwright smoke test, fixture captures in `samples/` (so no parser or golden replay tests from real data) and a cycle-rejection test. 65 tests run locally; the CBraMod test is skipped until `muse models pull cbramod` has run.
+
 ## 4. Status
 
 | Milestone | State |
 |---|---|
 | M0, M2 | Done. Verified with synthetic data |
-| M1 | Real device works (Muse S Athena, fw 3.1.19, preset p1041, 2026-11-06). EEG 256.4 Hz (within 1%), ~0.6% EEG samples missing, every gap reported as `stream.gap`. Readable after a forced kill (`taskkill /F /T`): all streams replay, ~1 s lost, `sessions show` rebuilds stats from files. Fixed on hardware: settle backlog decoded out of order (false gaps, wrong rate); CLI crash on non-UTF-8 consoles. **Pending:** the 30 min run's results; signal quality not checked yet (headband not worn) |
-| M3 | Done. Every CLI command was run against `muse serve` with `--server` |
+| M1 | Done on real hardware (Muse S Athena, fw 3.1.19, preset p1041, 2026-11-06). 30 min recording: EEG sample clock 256.70 Hz (+0.27%), 1.35% of EEG samples lost in 1,105 gaps, every gap reported (index gaps = `stream.gap` events = missing counts, no time jumps without an index gap; same for motion and optics), no disconnects. Delivered EEG rate 253.2 Hz because of that loss. Readable after a forced kill (`taskkill /F /T`): all streams replay, ~1 s lost, `sessions show` rebuilds stats from files. Fixed on hardware: settle backlog decoded out of order; CLI crash on non-UTF-8 consoles. **Open:** signal quality with the headband worn |
+| M3 | Done. Every CLI command was run against `muse serve` with `--server`, including `models pull` and `train-probe` |
 | M4 | Done. Smoke-tested in Chromium; CPU/latency targets not measured yet |
-| M5 | Built: `ModelAnalyzer`, `cbramod` (pinned weights, ~18 ms per 4 s window on CPU), `models pull`, `train-probe` (probe vs band power, session-held-out CV), `synthetic` `script` option for labelled test data. Verified end to end on scripted synthetic sessions, where band power wins as expected (1.00 vs 0.92). **Pending:** the acceptance check on real labelled recordings (e.g. 3+ sessions with `--calibrate` or markers) |
+| M5 | Built: `ModelAnalyzer`, `cbramod` (pinned weights, ~18 ms per 4 s window on CPU), `models pull`, `train-probe` (probe vs band power, session-held-out CV), `synthetic` `script` option for labelled test data. Verified end to end from the CLI, locally and with `--server`, on scripted synthetic sessions, where band power wins as expected (1.00 vs 0.92). **Pending:** the acceptance check on real labelled recordings (e.g. 3+ sessions with `--calibrate` or markers) |
 | M6 | `artifacts` and CSV/EDF+ export done; EDF+ not yet opened in MNE |
+| Docs | `getting-started.md` (concepts, first session) and `usage.md` (CLI, web UI, pipelines, troubleshooting) |
+
+**Next:** record 3+ calibrated sessions with the headband worn, which closes the M1 signal-quality check and gives M5 its real acceptance data; measure M4 CPU/latency during one of them; open an EDF+ export in MNE (M6).
 
 ## 5. Decided
 

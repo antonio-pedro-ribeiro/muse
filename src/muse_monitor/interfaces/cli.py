@@ -513,7 +513,8 @@ def train_probe(
                       f"[bold]{cv['baseline_mean']:.3f}[/] ± {cv['baseline_std']:.3f}")
             console.print(t)
             console.print(("[green]" if cv["model_beats_baseline"] else "[yellow]") + d["verdict"] + "[/]")
-            console.print(f"head: {d['head']}  (use: -a {plugin} with head = \"{d['head']}\" in the pipeline)")
+            console.print(f"head written to {d['head']}")
+            console.print(f"To use it, add head = '{d['head']}' to the {plugin} analyzer in a pipeline file.")
         emit(r, json_out, human)
     run(go())
 

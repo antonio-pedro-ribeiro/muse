@@ -78,7 +78,7 @@ class Baseline(Analyzer):
         self.ctx.emit(Event("baseline.ready", t or time.time(), data=result))
 
     def views(self) -> list[ViewSpec]:
-        return [ViewSpec(id="events", title="Calibration", type="events",
+        return [ViewSpec(id="events", title="Calibration", section="events", type="events",
                          description="Progress of the 2-minute calibration: 60 s eyes open, then 60 s eyes closed. "
                                      "The result is a personal baseline used to normalise band power. Alpha "
                                      "reactivity (closed vs. open) above 1 is typical.",

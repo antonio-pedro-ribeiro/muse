@@ -103,22 +103,22 @@ class BandPower(Analyzer):
 
     def views(self) -> list[ViewSpec]:
         return [
-            ViewSpec(id="mean_rel", title="Relative band power", type="bars", streams=["mean_rel"],
+            ViewSpec(id="mean_rel", title="Relative band power", section="now", type="bars", streams=["mean_rel"],
                      description="Share of the EEG power in each frequency band, averaged over good channels: "
                                  "delta 1-4 Hz, theta 4-8, alpha 8-13, beta 13-30, gamma 30-45. The bars add up to "
                                  "about 1. Alpha usually rises with eyes closed; blinks and movement inflate delta. "
                                  "These are measurements, not mental states.",
                      y=Axis(label="relative power", min=0, max=1)),
-            ViewSpec(id="trend", title="Relative band power over time", type="timeseries",
+            ViewSpec(id="trend", title="Relative band power over time", section="trends", type="timeseries",
                      description="The same relative band powers over the last 2 minutes, updated every "
                                  f"{self.config.step_s:g} s. Useful to see changes, e.g. when you close your eyes.",
                      streams=["mean_rel"], window_s=120.0, y=Axis(label="relative power", min=0, max=1)),
-            ViewSpec(id="psd", title="Spectrum (good channels)", type="spectrum", streams=["psd"],
+            ViewSpec(id="psd", title="Spectrum (good channels)", section="signal", type="spectrum", streams=["psd"],
                      description="Power at each frequency (log scale), averaged over good channels. Peaks show "
                                  "rhythms: a bump near 10 Hz is alpha. A sharp spike at 50 or 60 Hz is mains "
                                  "interference, not brain activity.",
                      y=Axis(label="power", unit="log10 µV²/Hz")),
-            ViewSpec(id="norm", title="Band power vs. eyes-open baseline", type="timeseries", streams=["norm"],
+            ViewSpec(id="norm", title="Band power vs. eyes-open baseline", section="trends", type="timeseries", streams=["norm"],
                      description="Band power divided by your own eyes-open calibration from this session: 1 means "
                                  "the same as baseline, 2 means twice as much. Empty until you run Calibrate. "
                                  "Comparing to a personal baseline makes values more comparable across sessions.",

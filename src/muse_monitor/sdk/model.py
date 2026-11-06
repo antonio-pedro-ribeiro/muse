@@ -192,12 +192,12 @@ class ModelAnalyzer(Analyzer):
             return []
         classes = ", ".join(self.head.classes)
         return [
-            ViewSpec(id="probs", title="Probe output", type="bars", streams=["probs"],
+            ViewSpec(id="probs", title="Probe output", section="now", type="bars", streams=["probs"],
                      description=f"How strongly the trained probe matches the current {self.config.window_s:g} s "
                                  f"of EEG to each of your labels ({classes}). It was trained on your own labelled "
                                  "sessions; it is a pattern match, not a measure of mental state.",
                      y=Axis(label="probability", min=0, max=1)),
-            ViewSpec(id="probs_trend", title="Probe output over time", type="timeseries", streams=["probs"],
+            ViewSpec(id="probs_trend", title="Probe output over time", section="trends", type="timeseries", streams=["probs"],
                      description="The same probabilities over the last 2 minutes.", window_s=120.0,
                      y=Axis(label="probability", min=0, max=1)),
         ]

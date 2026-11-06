@@ -144,10 +144,10 @@ uv run muse serve
 
 Open **http://127.0.0.1:8765** in your browser, then:
 
-1. On the **Live** page, keep the defaults and press **Start session**.
-2. Look at **Signal quality** first. Adjust the headband until most electrodes are good.
-3. Press **Calibrate (2 min)** and follow the prompts: eyes open, then eyes closed.
-4. Watch **Relative band power**: alpha usually rises while your eyes are closed.
+1. On the **Live** page, choose **Headband (Bluetooth)**, keep the defaults and press **Start session**.
+2. Look at **Signal check** first. Adjust the headband until most electrodes are good.
+3. Press **Calibrate (2 min)** and follow the banner: eyes open, then eyes closed.
+4. Watch **Right now**: the description and the band power; alpha usually rises while your eyes are closed.
 5. Type a label and press **Add marker** whenever something changes.
 6. Press **Stop** when you're done.
 
@@ -157,9 +157,9 @@ dashboard. Press `m` for a marker and `q` to stop.
 ### 5. Look back
 
 1. Open the **Sessions** page and click your session.
-2. Press **Analyze offline** to recalculate everything over the whole session and create a report.
-3. Browse the recorded signal, the stream statistics and the charts. Open the HTML report, or
-   **Export** the data as CSV or EDF+.
+2. Read the **Summary**, then press **Analyze** to recalculate everything over the whole session.
+3. In the **Timeline**, click a segment (such as *eyes closed*) to zoom in. **Replay** plays the
+   session back on the Live page; **Export** downloads CSV or EDF+.
 
 ## Where to go next
 

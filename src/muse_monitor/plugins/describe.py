@@ -314,7 +314,7 @@ class Describe(Analyzer):
 
     def views(self) -> list[ViewSpec]:
         return [ViewSpec(
-            id="description", title="Session description", type="text", event_types=["description"],
+            id="description", title="Session description", type="text", event_types=["description"], section="now",
             description=f"Every {self.config.every_s:g} s, a plain-language summary of the measurements: signal "
                         "quality, how power is spread over the frequency bands (compared with your eyes-open "
                         "baseline once you have calibrated), blinks, jaw clenching and movement. It describes "

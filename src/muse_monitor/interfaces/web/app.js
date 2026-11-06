@@ -1,45 +1,64 @@
-/* Muse Monitor web UI: plain JS, hash routing, talks only to /api/v1. */
+/* Muse Monitor web UI: plain JS, hash routing, talks only to /api/v1.
+   Pages answer, in order: is the signal good? what is it doing now? how did it change? what happened?
+   Technical detail lives in collapsed "Details" sections. Plugins place their views with ViewSpec.section. */
 (function () {
   "use strict";
   const { render, Store, fmt, info, heading } = window.MuseRenderers;
 
   // Plain-language explanations for the UI's own elements. Plugin views bring their own (ViewSpec.description).
   const HELP = {
-    source: "Where the data comes from. openmuse connects to the Muse headband directly over Bluetooth; synthetic generates test signals so you can try the app without hardware.",
+    source: "Where the data comes from: your headband over Bluetooth, your headband through the Mind Monitor phone app, or made-up test signals to try the app.",
     label: "Optional name for this session, shown in the session list and reports (e.g. \"morning meditation\").",
-    record: "Save the unmodified sensor data to disk so you can review, re-analyze or export it later. If off, nothing is stored.",
-    sourceOptions: "Settings for the chosen source. The defaults work in most cases. For openmuse, leave the address empty to use the strongest headband in range.",
-    analyzers: "Processing steps that run on the live signal. Each one adds charts. You can re-run any of them later on a recording with \"Analyze offline\".",
+    record: "Save the unmodified sensor data to disk so you can review, replay, re-analyze or export it later. If off, nothing is stored.",
+    advanced: "Settings most people never need: options for the chosen source (for the headband, leave the address empty to use the strongest one in range) and which analyzers run.",
+    analyzers: "Processing steps that run on the live signal. Each one adds charts. You can re-run any of them later on a recording with \"Analyze\".",
     start: "Connects to the source and starts streaming. Only one live session can run at a time.",
     status: "running: data is streaming. stopped: the session ended normally. failed: it ended because of an error. incomplete: the app quit while recording; run `muse sessions repair` to finish the files.",
     elapsed: "Time since the session started.",
     battery: "Headband battery level as reported by the device.",
+    via: "How the data reaches this computer.",
     health: "One chip per plugin in this session. Green: working. Yellow: degraded, e.g. Bluetooth packets lost. Red: stopped after an error; the rest of the session keeps running. \"dropped\" counts chunks an analyzer skipped because it fell behind; the recording itself never drops data.",
-    marker: "Adds a labelled timestamp to the recording, e.g. \"eyes closed\" or \"breathing exercise\". Markers show as dashed lines in charts and are kept in exports.",
-    calibrate: "A 2-minute personal baseline: keep your eyes open and relaxed for 60 s, then closed for 60 s, following the prompts. Band power is then also shown relative to this baseline.",
+    marker: "Adds a labelled timestamp to the recording, e.g. \"eyes closed\" or \"breathing exercise\". Markers show as dashed lines in charts, label parts of the session description, and are kept in exports.",
+    calibrate: "A 2-minute personal baseline: keep your eyes open and relaxed for 60 s, then closed for 60 s. A banner tells you when to switch. Band power is then also shown relative to this baseline.",
     stop: "Ends the session and finishes writing the recording.",
+    quality: "Check this first. Each electrode is rated by how much its signal varies: green is good contact, yellow noisy, red poor contact or no signal. If contact is poor, the other numbers are not meaningful.",
+    now: "What the signal is doing at the moment: a plain-language description of the last 30 s, and how the power is spread over the frequency bands right now.",
+    trends: "How the measurements change over the last minutes. Cards appear once they have data (for example, the baseline comparison after you calibrate).",
+    signal: "The signal itself: the filtered EEG traces and the frequency spectrum.",
+    events: "What happened: markers, calibration, blinks, jaw clenching, movement, and all earlier descriptions.",
     sessions: "All recorded sessions, newest first. Click a row to open it.",
     started: "When the session started, in your local time.",
     duration: "How long the session lasted.",
     device: "The headband (or test source) the data came from.",
-    gaps: "How many times samples were lost, e.g. Bluetooth dropouts. Gaps are recorded and reported, never filled in.",
+    usable: "Share of electrode readings with good contact over the session (from the signal-quality check).",
+    received: "Share of the expected EEG samples that arrived. Bluetooth or Wi-Fi dropouts lower it; about 98–99% is normal.",
+    summaryCol: "The first line of the session description. Run Analyze on older sessions to get one.",
     replay: "Plays this recording back on the Live page as if it were happening now, at the chosen speed, with the analyzers it was recorded with plus the session description. Markers and calibration from the recording are replayed too. Nothing is saved; the recording is not changed. Only one live session can run at a time.",
-    replaying: "This is a recorded session being played back, not live data from the headband. Times shown are the original recording times. Adding markers and calibrating are off during a replay.",
-    analyze: "Replays the recording through the analyzers, saves their results next to the raw data and creates an HTML report. The raw recording is never changed; running it again replaces the previous results.",
-    exportCsv: "Download every stream and the event list as CSV files (zipped), for spreadsheets or your own scripts.",
-    exportEdf: "Download an EDF+ file for EEG tools such as EDFbrowser, EEGLAB or MNE. Markers and artifacts become annotations; gaps are filled with zeros and annotated.",
-    recorded: "The recorded signal for the whole session, reduced for display (peaks are kept). Choose a stream: eeg (brain signal), acc (head movement), gyro (rotation), optics (blood-flow sensors).",
-    streams: "Per sensor stream: samples received, the measured sample rate, the rate the device should deliver, and lost data. A rate well below nominal or many gaps points to a weak Bluetooth link.",
-    samples: "Number of measurements received for this stream.",
-    rate: "Measured samples per second over the session.",
-    nominal: "Samples per second the device is expected to deliver (0 means irregular, e.g. battery).",
-    missing: "Total number of samples lost inside gaps.",
-    reports: "HTML summaries created by offline analyses. Each opens in a new tab and is a single file you can keep or share.",
-    report: "Summary computed by this plugin at the end of the session or analysis.",
+    replaying: "This is a recorded session being played back, not live data. Times shown are the original recording times. Adding markers and calibrating are off during a replay.",
+    analyze: "Runs the analyzers over the whole recording as fast as possible, saves their results next to the raw data, refreshes the summary and charts on this page, and creates an HTML report. The raw recording is never changed.",
+    export: "Download the data: CSV (every stream plus events, zipped) for spreadsheets or your own scripts, or EDF+ for EEG tools such as EDFbrowser, EEGLAB or MNE (markers and artifacts become annotations).",
+    summary: "Key numbers and a plain-language description of the session, for the whole recording and for each marked or calibration segment. It describes measurements, not states of mind.",
+    timeline: "The recording on one time axis. Pick a segment to zoom every chart to it. Dashed lines are markers.",
+    charts: "Charts from the analyzers over the whole session. Run Analyze to create or refresh them.",
+    completeness: "Per sensor stream: samples received, share of expected samples that arrived, measured and expected rate, and gaps. Many gaps or a low share point to a weak Bluetooth or Wi-Fi link.",
+    pluginReports: "Each analyzer's end-of-session numbers.",
+    reports: "HTML summaries created by analyses. Each opens in a new tab and is a single file you can keep or share.",
+    versions: "Plugin versions used, so results can be reproduced.",
     plugins: "Plugins provide devices (sources), processing (analyzers) and outputs (sinks). ok: ready. unavailable: a dependency is missing (see the hint). incompatible: built for a newer version of the app.",
-    options: "Configuration options with their default values. Change them in a pipeline TOML file or, for sources, in the start form.",
+    options: "Configuration options with their default values. Change them in a pipeline TOML file or, for sources, under Advanced in the start form.",
   };
-  const sub = (text, help, style) => { const e = heading("h2", text, help); if (style) e.setAttribute("style", style); return e; };
+  const SOURCES = {
+    openmuse: ["Headband (Bluetooth)", "Connects directly to your Muse S Athena. Close the Muse phone app and don't pair the headband in Windows."],
+    mindmonitor: ["Via Mind Monitor", "Receives your headband's data from the Mind Monitor phone app over Wi-Fi (OSC, UDP port 5000)."],
+    synthetic: ["Test signals", "Made-up EEG with rhythms, blinks and noise, to try the app without a headband."],
+  };
+  const VIA = { openmuse: "via Bluetooth", mindmonitor: "via Mind Monitor", synthetic: "test signals" };
+  const SECTIONS = { quality: "Signal check", now: "Right now", trends: "Trends", signal: "Signal", events: "Events" };
+  const ORDER = ["quality", "now", "trends", "signal", "events"];
+  const sectionOf = (v) => v.section || ({ text: "now", events: "events", spectrum: "signal", bars: "now",
+    metric: "now", table: "now" }[v.type] || "trends");
+
+  const sub = (text, help, tag = "h2") => heading(tag, text, help);
   function field(text, input, help) {
     const id = input.id || (input.id = `f-${Math.random().toString(36).slice(2, 9)}`);
     return h("div", { class: "field" }, h("span", { class: "field-head" }, h("label", { for: id }, text), help ? info(help, text) : null), input);
@@ -77,16 +96,26 @@
       else if (k === "class") e.className = v;
       else e.setAttribute(k, v === true ? "" : v);
     }
-    for (const c of children.flat()) if (c != null) e.append(c instanceof Node ? c : document.createTextNode(c));
+    for (const c of children.flat(Infinity)) if (c != null && c !== false) e.append(c instanceof Node ? c : document.createTextNode(c));
     return e;
   }
-  function notice(msg, error = false) { return h("div", { class: "notice" + (error ? " error" : "") }, msg); }
+  function notice(msg, kind = "") { return h("div", { class: "notice" + (kind === true ? " error" : kind ? " " + kind : "") }, msg); }
   function when(iso) { return iso ? new Date(iso).toLocaleString() : "–"; }
   function duration(a, b) {
     if (!a) return "–";
     const s = Math.max(0, ((b ? new Date(b) : new Date()) - new Date(a)) / 1000);
     return s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.floor(s / 60)}m ${Math.floor(s % 60)}s`;
   }
+  /** Length of the recording: from the EEG samples (expected = received + missing) when known, else wall clock. */
+  function sessionLength(sess) {
+    const e = (sess.stats || {}).eeg;
+    if (e && e.nominal_rate && e.samples) {
+      const s = (e.samples + (e.missing_samples || 0)) / e.nominal_rate;
+      return s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.floor(s / 60)}m ${Math.floor(s % 60)}s`;
+    }
+    return duration(sess.started_at, sess.ended_at);
+  }
+  const clock = (s) => { s = Math.max(0, Math.round(s)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
   function statusChip(status) { return h("span", { class: "chip " + (status === "running" || status === "stopped" ? "ok" : status) }, status); }
   function showTokenForm() {
     const input = h("input", { type: "password", placeholder: "API token", size: 40 });
@@ -94,6 +123,8 @@
       h("p", { class: "muted" }, "Find it in the terminal where `muse serve` started, or in the token file."),
       h("div", { class: "row" }, input, h("button", { class: "primary", onclick: () => { setToken(input.value.trim()); route(); } }, "Save"))));
   }
+  const recorded = (sess) => ((sess.pipeline || {}).sink || []).some((s) => s.plugin === "recorder");
+  const report = (reports, suffix) => (reports || []).find((r) => r.title.endsWith(suffix));
 
   // ---------- schema-driven config form ----------
   function schemaForm(schema, values = {}) {
@@ -129,28 +160,37 @@
     return grid;
   }
 
-  // ---------- pages ----------
+  // ---------- live ----------
   async function pageLive() {
     const health = await api("/health");
     const id = health.live_session || health.last_session;
-    const sess = id ? await api(`/sessions/${id}`) : null;
+    const sess = id ? await api(`/sessions/${id}`).catch(() => null) : null;
     if (!sess || !sess.active) return startForm(sess);
     return liveView(sess);
   }
 
   async function startForm(last) {
     const plugins = await api("/plugins");
-    const sources = plugins.filter((p) => p.kind === "source" && p.name !== "replay");
-    const analyzers = plugins.filter((p) => p.kind === "analyzer");
+    const sources = plugins.filter((p) => p.kind === "source" && p.name !== "replay")
+      .sort((a, b) => (a.name in SOURCES ? Object.keys(SOURCES).indexOf(a.name) : 9) - (b.name in SOURCES ? Object.keys(SOURCES).indexOf(b.name) : 9));
+    // pipeline order matters: an analyzer reads only the outputs of those before it (describe reads them all)
+    const rank = (n) => { const i = ["quality", "filter", "baseline", "bandpower", "artifacts"].indexOf(n); return n === "describe" ? 99 : i < 0 ? 50 : i; };
+    const analyzers = plugins.filter((p) => p.kind === "analyzer").sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
     const defaults = ["quality", "filter", "baseline", "bandpower", "artifacts", "describe"];
-    const srcSelect = h("select", {}, sources.map((s) => h("option", { value: s.name, disabled: s.status !== "ok" },
-      `${s.name}${s.status !== "ok" ? " (" + s.status + ")" : ""}`)));
+    let chosen = (sources.find((s) => s.status === "ok") || sources[0] || {}).name;
     const optsBox = h("div");
     const showOpts = () => {
-      const s = sources.find((x) => x.name === srcSelect.value);
+      const s = sources.find((x) => x.name === chosen);
       optsBox.replaceChildren(schemaForm(s ? s.config_schema : {}, s ? s.config_defaults : {}));
     };
-    srcSelect.addEventListener("change", showOpts);
+    const cards = sources.map((s) => {
+      const [title, text] = SOURCES[s.name] || [s.name, s.summary];
+      const radio = h("input", { type: "radio", name: "source", value: s.name, disabled: s.status !== "ok" });
+      radio.checked = s.name === chosen;
+      radio.addEventListener("change", () => { chosen = s.name; showOpts(); });
+      return h("label", { class: "source-card" + (s.status !== "ok" ? " disabled" : "") }, radio,
+        h("span", {}, h("strong", {}, title), h("span", { class: "muted" }, s.status !== "ok" ? `${s.status}: ${s.hint}` : text)));
+    });
     showOpts();
     const checks = analyzers.map((a) => {
       const c = h("input", { type: "checkbox", value: a.name, disabled: a.status !== "ok" });
@@ -161,80 +201,159 @@
     const label = h("input", { type: "text", placeholder: "e.g. morning meditation" });
     const msg = h("div");
     const start = h("button", { class: "primary", onclick: async () => {
-      start.disabled = true; msg.replaceChildren();
+      start.disabled = true; msg.replaceChildren(notice(`Connecting to ${(SOURCES[chosen] || [chosen])[0].toLowerCase()}…`));
       const pipeline = {
         session: { label: label.value || null },
-        source: { plugin: srcSelect.value, ...optsBox.firstChild.values() },
+        source: { plugin: chosen, ...optsBox.firstChild.values() },
         analyzer: checks.map((c) => c.querySelector("input")).filter((i) => i.checked).map((i) => ({ plugin: i.value })),
         sink: record.checked ? [{ plugin: "recorder" }] : [],
       };
       try { await api("/sessions", { method: "POST", json: pipeline }); route(); }
       catch (e) { msg.replaceChildren(notice(e.message, true)); start.disabled = false; }
     } }, "Start session");
+    const lastCard = last ? h("div", { class: "card last" },
+      h("span", {}, h("span", { class: "muted" }, "Last session: "), h("strong", {}, last.label || last.id), " · ",
+        statusChip(last.status), last.ended_at ? h("span", { class: "muted" }, ` · ended ${when(last.ended_at)}`) : null),
+      last.error ? h("div", { class: "muted" }, last.error) : null,
+      recorded(last) ? h("a", { href: `#/session/${last.id}` }, "Open") : null) : null;
     app.replaceChildren(...[
-      h("h1", {}, "Start a session"),
-      last ? notice(`Last session ${last.label || last.id} ended (${last.status}${last.error ? ": " + last.error : ""}).`, last.status === "failed") : null,
-      msg,
+      h("h1", {}, "Start a session"), lastCard, msg,
       h("div", { class: "card" },
-        h("div", { class: "form-grid" },
-          field("Source", srcSelect, HELP.source),
-          field("Label", label, HELP.label),
-          field("Record to disk", record, HELP.record)),
-        sub("Source options", HELP.sourceOptions, "margin-top:14px"), optsBox,
-        sub("Analyzers", HELP.analyzers, "margin-top:14px"), h("div", { class: "row" }, checks),
+        sub("Source", HELP.source), h("div", { class: "source-cards" }, cards),
+        h("div", { class: "form-grid", style: "margin-top:14px" },
+          field("Label", label, HELP.label), field("Record to disk", record, HELP.record)),
+        h("details", { class: "advanced" }, h("summary", {}, "Advanced ", info(HELP.advanced, "Advanced")),
+          sub("Source options", null, "h3"), optsBox,
+          heading("h3", "Analyzers", HELP.analyzers), h("div", { class: "row" }, checks)),
         h("div", { class: "row", style: "margin-top:14px" }, start, info(HELP.start, "Start session")))].filter(Boolean));
   }
 
   function liveView(sess) {
-    const isReplay = ((sess.pipeline || {}).source || {}).plugin === "replay";
+    const source = (sess.pipeline || {}).source || {};
+    const isReplay = source.plugin === "replay";
     const store = new Store(300);
-    const cards = new Map();
-    const grid = h("div", { class: "grid" });
-    const chips = h("div", { class: "row" });
     const elapsed = h("span", { class: "muted" });
     const battery = h("span", { class: "muted" });
-    const markerLabel = h("input", { type: "text", placeholder: "marker label", size: 16 });
+    const via = h("span", { class: "chip " + (isReplay ? "warn" : "plain") },
+      isReplay ? `replay ${source.speed || 1}×` : VIA[source.plugin] || source.plugin || "");
+    const banner = h("div", { class: "banner", hidden: true });
+    const chips = h("div", { class: "row" });
+    const markerLabel = h("input", { type: "text", placeholder: "marker label", size: 16, "aria-label": "Marker label" });
+    const addMarker = async () => {
+      await api(`/sessions/${sess.id}/markers`, { method: "POST", json: { label: markerLabel.value || "marker" } });
+      markerLabel.value = "";
+    };
+    markerLabel.addEventListener("keydown", (e) => { if (e.key === "Enter") addMarker(); });
     const calibrateBtn = h("button", { onclick: async () => {
       calibrateBtn.disabled = true;
       await api(`/sessions/${sess.id}/calibrate`, { method: "POST", json: {} });
-      calibrateBtn.textContent = "Calibrating: eyes open, then closed when told";
     } }, "Calibrate (2 min)");
+
+    // sections: quality and now are single combined cards; the others are grids that appear once a card has data
+    const qualityCard = h("div", { class: "card" }, sub(SECTIONS.quality, HELP.quality));
+    const qualityWarn = notice("Fewer than half of the electrode readings have good contact. Adjust the headband so the sensors touch the skin, and moisten them.", "warn");
+    qualityWarn.hidden = true;
+    qualityCard.append(qualityWarn);
+    const nowCard = h("div", { class: "card" }, sub(SECTIONS.now, HELP.now));
+    const waiting = { quality: h("div", { class: "empty" }, "waiting for data…"), now: h("div", { class: "empty" }, "waiting for data…") };
+    qualityCard.append(waiting.quality); nowCard.append(waiting.now);
+    const grids = {}, sectionEls = {};
+    for (const s of ["trends", "signal", "events"]) {
+      grids[s] = h("div", { class: "grid" });
+      sectionEls[s] = h("section", { class: "live-section", hidden: true }, sub(SECTIONS[s], HELP[s]), grids[s]);
+    }
+    const entries = [];
+    const hasData = (v) => {
+      if (v.type === "events" || v.type === "text") {
+        const pre = v.event_types || [];
+        return store.events.some((e) => (!pre.length || pre.some((p) => e.type.startsWith(p))) && (v.type !== "text" || (e.data && e.data.text)));
+      }
+      return v.streams.some((s) => store.streams[s] && store.streams[s].t.length);
+    };
+    function addView(v) {
+      const sec = sectionOf(v);
+      const body = h("div");
+      if (sec === "quality" || sec === "now") {
+        const spec = v.type === "text" ? { ...v, limit: 1 } : v;
+        const block = h("div", { class: "block", hidden: true }, sub(v.title, v.description, "h3"), body);
+        const card = sec === "quality" ? qualityCard : nowCard;
+        if (v.type === "text") card.insertBefore(block, card.children[1]); else card.append(block);
+        entries.push({ v: spec, body, el: block, sec });
+        if (v.type === "text") addView({ ...v, id: v.id + "/all", title: "Earlier descriptions", section: "events" });
+      } else {
+        const wide = v.type === "timeseries" && (v.window_s <= 10 || v.id.endsWith("trend"));
+        const card = h("div", { class: "card" + (wide ? " wide" : ""), hidden: true }, sub(v.title, v.description), body);
+        grids[sec].append(card);
+        entries.push({ v, body, el: card, sec });
+      }
+    }
+
     app.replaceChildren(
       h("div", { class: "row" },
         h("h1", {}, sess.label || "Live session"),
         h("span", { class: "with-info" }, statusChip("running"), info(HELP.status, "status")),
         h("span", { class: "with-info" }, elapsed, info(HELP.elapsed, "elapsed time")),
         h("span", { class: "with-info" }, battery, info(HELP.battery, "battery")),
-        isReplay ? h("span", { class: "with-info" }, h("span", { class: "chip warn" }, "replay"), info(HELP.replaying, "replay")) : null,
+        h("span", { class: "with-info" }, via, info(isReplay ? HELP.replaying : HELP.via, "source")),
         h("span", { class: "spacer" }),
-        isReplay ? null : [markerLabel,
-          h("button", { onclick: async () => { await api(`/sessions/${sess.id}/markers`, { method: "POST", json: { label: markerLabel.value || "marker" } }); markerLabel.value = ""; } }, "Add marker"),
-          info(HELP.marker, "Add marker"),
-          calibrateBtn, info(HELP.calibrate, "Calibrate")],
         h("button", { class: "danger", onclick: async () => { await api(`/sessions/${sess.id}/stop`, { method: "POST" }); route(); } }, "Stop"),
         info(HELP.stop, "Stop")),
-      h("div", { class: "muted" }, `${sess.id} · ${sess.device ? sess.device.name || sess.device.model : ""}`),
-      h("div", { class: "row" }, h("span", { class: "with-info muted" }, "Plugins", info(HELP.health, "plugin health")), chips),
-      grid);
+      isReplay ? null : h("div", { class: "row controls" }, markerLabel,
+        h("button", { onclick: addMarker }, "Add marker"), info(HELP.marker, "Add marker"),
+        calibrateBtn, info(HELP.calibrate, "Calibrate")),
+      banner,
+      h("div", { class: "live-top" }, qualityCard, nowCard),
+      sectionEls.trends, sectionEls.signal, sectionEls.events,
+      h("details", { class: "details" }, h("summary", {}, "Details"),
+        h("div", { class: "row" }, h("span", { class: "with-info muted" }, "Plugins", info(HELP.health, "plugin health")), chips),
+        h("div", { class: "muted" }, `Session ${sess.id} · ${sess.device ? [sess.device.name, sess.device.model].filter(Boolean).join(" · ") : ""}`)));
 
-    function ensureCards(views) {
-      for (const v of views) {
-        if (cards.has(v.id)) continue;
-        const body = h("div");
-        const card = h("div", { class: "card" + (v.type === "timeseries" && v.window_s <= 10 ? " wide" : "") }, sub(v.title, v.description), body);
-        cards.set(v.id, { v, body });
-        grid.append(card);
-      }
+    // calibration banner, driven by the session's calibration events
+    let calib = null;
+    function onEvent(e) {
+      const phase = { "calibration.eyes_open": "Keep your eyes OPEN and relax", "calibration.eyes_closed": "CLOSE your eyes and relax" }[e.type];
+      if (phase) calib = { text: phase, end: e.t + (e.duration || 0) };
+      else if (e.type === "calibration.end" || e.type === "baseline.ready") calib = { text: "Calibration done: band power is now also compared with your baseline.", until: Date.now() + 6000, done: true };
+      else if (e.type === "baseline.failed") calib = { text: `Calibration failed: ${(e.data && e.data.reason) || "not enough clean data"}.`, until: Date.now() + 10000, done: true, bad: true };
     }
+    function drawBanner() {
+      if (!calib || (calib.until && Date.now() > calib.until)) {
+        banner.hidden = true; calib = calib && calib.until ? null : calib;
+        if (!calib) calibrateBtn.disabled = false;
+        return;
+      }
+      banner.hidden = false;
+      banner.className = "banner" + (calib.bad ? " bad" : calib.done ? " done" : "");
+      const left = calib.end && !isReplay ? Math.max(0, calib.end - Date.now() / 1000) : null;
+      banner.textContent = (isReplay && !calib.done ? "In the recording: " : "Calibration: ") + calib.text + (left != null ? ` · ${clock(left)} left` : "");
+      calibrateBtn.disabled = !calib.done;
+    }
+
     let dirty = false, lastDraw = 0, frame = 0;
     function draw(ts) {
       frame = requestAnimationFrame(draw);
+      drawBanner();
       if (!dirty || ts - lastDraw < 100) return;
       dirty = false; lastDraw = ts;
-      for (const { v, body } of cards.values()) render(body, v, store);
+      const shown = { quality: 0, now: 0, trends: 0, signal: 0, events: 0 };
+      for (const en of entries) {
+        const ok = hasData(en.v);
+        en.el.hidden = !ok;
+        if (ok) { render(en.body, en.v, store); shown[en.sec]++; }
+      }
+      waiting.quality.hidden = shown.quality > 0;
+      waiting.now.hidden = shown.now > 0;
+      for (const s of ["trends", "signal", "events"]) sectionEls[s].hidden = !shown[s];
+      const usable = entries.find((en) => en.sec === "quality" && en.v.type === "metric");
+      const u = usable && store.streams[usable.v.streams[0]];
+      qualityWarn.hidden = !(u && u.data.length && u.data[u.data.length - 1][0] < 0.5);
       const b = store.streams.battery;
       if (b && b.data.length) battery.textContent = `battery ${Math.round(b.data[b.data.length - 1][0])}%`;
       elapsed.textContent = duration(sess.started_at);
+      if (isReplay) {
+        const any = Object.values(store.streams).find((s) => s.t.length);
+        if (any) via.textContent = `replay ${source.speed || 1}× · recorded ${new Date(any.t[0] * 1000).toLocaleString()}`;
+      }
     }
     frame = requestAnimationFrame(draw);
 
@@ -243,37 +362,77 @@
     const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${API}/sessions/${sess.id}/live?${q}`);
     ws.onmessage = (m) => {
       const msg = JSON.parse(m.data);
-      if (msg.type === "hello") { store.declare(msg.streams); ensureCards(msg.views); }
-      else if (msg.type === "health") {
+      if (msg.type === "hello") {
+        store.declare(msg.streams);
+        msg.views.slice().sort((a, b) => ORDER.indexOf(sectionOf(a)) - ORDER.indexOf(sectionOf(b))).forEach(addView);
+      } else if (msg.type === "health") {
         chips.replaceChildren(...Object.entries(msg.plugins).map(([name, hl]) =>
           h("span", { class: "chip " + hl.status, title: hl.message || "" }, name + (hl.dropped ? ` (dropped ${hl.dropped})` : ""))));
       } else if (msg.type === "end") { setTimeout(route, 300); }
-      else store.add(msg);
+      else { if (msg.type === "event") onEvent(msg.event); store.add(msg); }
       dirty = true;
     };
     ws.onclose = () => { if (location.hash.startsWith("#/live")) setTimeout(route, 1500); };
     cleanup.push(() => { cancelAnimationFrame(frame); ws.onclose = null; ws.close(); });
   }
 
+  // ---------- sessions ----------
+  function keyNumbers(sess, reports) {
+    const eeg = (sess.stats || {}).eeg;
+    const quality = report(reports, ": Signal quality");
+    const desc = report(reports, ": Session description");
+    let usable = desc && desc.metrics.usable_pct;
+    if (usable == null && quality) {
+      const v = Object.entries(quality.metrics).filter(([k]) => k.startsWith("usable_") && k.endsWith("_pct") && !/AUX/.test(k)).map(([, x]) => x);
+      usable = v.length ? v.reduce((a, x) => a + x, 0) / v.length : null;
+    }
+    const received = eeg && eeg.samples ? 100 * eeg.samples / (eeg.samples + (eeg.missing_samples || 0)) : null;
+    const art = report(reports, ": Artifacts");
+    const bp = report(reports, ": Band power");
+    const first = desc && desc.notes.length ? desc.notes[0].replace(/^Whole session \([^)]*\):\s*/, "") : "";
+    return { usable, received, blinks: art && art.metrics.blink_per_min, alpha: bp && bp.metrics.mean_rel_alpha, first };
+  }
+  const pct = (x, d = 0) => (x == null ? "–" : `${Number(x).toFixed(d)}%`);
+
   async function pageSessions() {
     const list = await api("/sessions");
-    const rows = list.map((s) => h("tr", { class: "link", onclick: () => (location.hash = `#/session/${s.id}`) },
-      h("td", {}, when(s.started_at)), h("td", {}, s.label || h("span", { class: "muted" }, "—")),
-      h("td", {}, duration(s.started_at, s.ended_at)),
-      h("td", {}, s.device ? s.device.model || s.device.name : "–"),
-      h("td", {}, String(Object.values(s.stats || {}).reduce((a, x) => a + (x.gaps || 0), 0))),
-      h("td", {}, statusChip(s.status))));
-    app.replaceChildren(heading("h1", "Sessions", HELP.sessions),
+    const search = h("input", { type: "search", placeholder: "Search label or description", size: 28, "aria-label": "Search sessions" });
+    const tbody = h("tbody");
+    const rows = list.map((s) => {
+      const k = keyNumbers(s, s.reports);
+      const tr = h("tr", { class: "link", onclick: () => (location.hash = `#/session/${s.id}`) },
+        h("td", {}, when(s.started_at)), h("td", {}, s.label || h("span", { class: "muted" }, "—")),
+        h("td", {}, sessionLength(s)),
+        h("td", {}, s.device ? s.device.model || s.device.name : "–"),
+        h("td", {}, pct(k.usable)), h("td", {}, pct(k.received, 1)),
+        h("td", { class: "summary-cell" }, k.first || h("span", { class: "muted" }, "—")),
+        h("td", {}, statusChip(s.status)));
+      tr.dataset.text = `${s.label || ""} ${k.first}`.toLowerCase();
+      return tr;
+    });
+    tbody.append(...rows);
+    search.addEventListener("input", () => {
+      const q = search.value.trim().toLowerCase();
+      for (const tr of rows) tr.hidden = !!q && !tr.dataset.text.includes(q);
+    });
+    app.replaceChildren(h("div", { class: "row" }, heading("h1", "Sessions", HELP.sessions), h("span", { class: "spacer" }), list.length ? search : null),
       list.length ? h("div", { class: "card table-wrap" }, h("table", {},
-        h("tr", {}, th("Started", HELP.started), th("Label", HELP.label), th("Duration", HELP.duration),
-          th("Device", HELP.device), th("Gaps", HELP.gaps), th("Status", HELP.status)), rows))
+        h("thead", {}, h("tr", {}, th("Started", HELP.started), th("Label", HELP.label), th("Duration", HELP.duration),
+          th("Device", HELP.device), th("Usable", HELP.usable), th("Data received", HELP.received),
+          th("Summary", HELP.summaryCol), th("Status", HELP.status))), tbody))
         : notice("No recordings yet. Start one on the Live page."));
   }
 
   async function pageSession(id) {
-    const [sess, streams, events, reports] = await Promise.all([
-      api(`/sessions/${id}`), api(`/sessions/${id}/streams`), api(`/sessions/${id}/events`), api(`/sessions/${id}/reports`)]);
+    const [sess, streams, events, reports, analyses] = await Promise.all([
+      api(`/sessions/${id}`), api(`/sessions/${id}/streams`), api(`/sessions/${id}/events`), api(`/sessions/${id}/reports`),
+      api("/sessions?mode=offline").catch(() => [])]);
+    const analysis = analyses.find((a) => a.parent === id);                 // newest analysis of this recording
+    const allReports = analysis && analysis.reports.length ? analysis.reports : sess.reports || [];
+    const views = (analysis && analysis.views.length ? analysis.views : sess.views) || [];
     const msg = h("div");
+
+    // actions
     const analyze = h("button", { class: "primary", onclick: async () => {
       analyze.disabled = true;
       try {
@@ -288,9 +447,8 @@
           if (j.status === "failed") throw new Error(j.error);
         }
       } catch (e) { msg.replaceChildren(notice(e.message, true)); analyze.disabled = false; }
-    } }, "Analyze offline");
-    const speed = h("select", { "aria-label": "Replay speed" },
-      [1, 2, 5, 10].map((x) => h("option", { value: String(x) }, `${x}×`)));
+    } }, "Analyze");
+    const speed = h("select", { "aria-label": "Replay speed" }, [1, 2, 5, 10].map((x) => h("option", { value: String(x) }, `${x}×`)));
     const replayBtn = h("button", { onclick: async () => {
       replayBtn.disabled = true;
       try {
@@ -298,79 +456,140 @@
         location.hash = "#/live";
       } catch (e) { msg.replaceChildren(notice(e.message, true)); replayBtn.disabled = false; }
     } }, "Replay");
-    const exportBtn = (fmt) => [h("button", { onclick: async () => {
-      try {
-        const res = await api(`/sessions/${id}/export?format=${fmt}`, { method: "POST", raw: true });
-        const blob = await res.blob();
-        const a = h("a", { href: URL.createObjectURL(blob), download: `${id}.${fmt === "csv" ? "zip" : fmt}` });
-        a.click(); URL.revokeObjectURL(a.href);
-      } catch (e) { msg.replaceChildren(notice(e.message, true)); }
-    } }, `Export ${fmt.toUpperCase()}`), info(fmt === "csv" ? HELP.exportCsv : HELP.exportEdf, `Export ${fmt.toUpperCase()}`)];
+    const exportMenu = h("details", { class: "menu" }, h("summary", { class: "btn" }, "Export ▾"),
+      h("div", { class: "menu-items" }, ["csv", "edf"].map((f) => h("button", { onclick: async () => {
+        exportMenu.open = false;
+        try {
+          const res = await api(`/sessions/${id}/export?format=${f}`, { method: "POST", raw: true });
+          const a = h("a", { href: URL.createObjectURL(await res.blob()), download: `${id}.${f === "csv" ? "zip" : f}` });
+          a.click(); URL.revokeObjectURL(a.href);
+        } catch (e) { msg.replaceChildren(notice(e.message, true)); }
+      } }, f === "csv" ? "CSV (zip)" : "EDF+"))));
 
-    const statsRows = Object.entries(sess.stats || {}).filter(([sid]) => !sid.includes("/")).map(([sid, s]) => h("tr", {},
-      h("td", {}, sid), h("td", {}, String(s.samples)), h("td", {}, fmt(s.effective_rate)), h("td", {}, fmt(s.nominal_rate)),
-      h("td", {}, String(s.gaps)), h("td", {}, String(s.missing_samples))));
-    const reportCards = (sess.reports || []).map((r) => h("div", { class: "card" }, sub(r.title, HELP.report),
-      h("table", { class: "kv" }, Object.entries(r.metrics).map(([k, v]) => h("tr", {}, h("th", {}, k), h("td", {}, typeof v === "number" ? fmt(v) : String(v ?? "–"))))),
-      r.notes.map((n) => h("p", { class: "muted" }, n))));
+    // summary
+    const k = keyNumbers(sess, allReports);
+    const desc = report(allReports, ": Session description");
+    const nums = [["Duration", sessionLength(sess), HELP.duration], ["Usable", pct(k.usable), HELP.usable],
+      ["Data received", pct(k.received, 1), HELP.received],
+      ["Blinks", k.blinks == null ? "–" : `${fmt(k.blinks)}/min`, "Blinks per minute, detected from the forehead electrodes."],
+      ["Alpha share", k.alpha == null ? "–" : pct(100 * k.alpha), "Average share of power in the alpha band (8–13 Hz), over windows with good contact."]];
+    const descNotes = desc ? desc.notes : [];
+    const segNotes = descNotes.slice(1).filter((n) => n.startsWith("“"));
+    const otherNotes = descNotes.slice(1).filter((n) => !n.startsWith("“"));
+    const summary = h("div", { class: "card wide" }, sub("Summary", HELP.summary),
+      h("div", { class: "keynums" }, nums.map(([l, v, help]) => h("div", {}, h("div", { class: "metric-value" }, v),
+        h("div", { class: "metric-label with-info" }, l, info(help, l))))),
+      desc ? [h("p", { class: "lead" }, descNotes[0]),
+        segNotes.length ? h("ul", { class: "segments" }, segNotes.map((n) => h("li", {}, n))) : null,
+        otherNotes.map((n) => h("p", { class: "muted small" }, n))]
+        : h("p", { class: "muted" }, "No description for this session yet: press Analyze (or Replay) to create one."));
 
-    // trace viewer
+    // timeline: one time axis for all charts; segments zoom them
     const raw = streams.filter((s) => !s.id.includes("/") && s.rate > 0)
       .sort((a, b) => (a.kind === "eeg" ? -1 : 0) - (b.kind === "eeg" ? -1 : 0));
-    const select = h("select", {}, raw.map((s) => h("option", { value: s.id }, `${s.id} (${s.channels.length} ch, ${s.rate} Hz)`)));
-    const traceBody = h("div");
-    async function loadTrace() {
-      if (!select.value) return traceBody.replaceChildren(notice("No raw streams."));
-      const d = await api(`/sessions/${id}/streams/${select.value}?max_points=3000`);
-      const store = new Store(1e12);
-      store.streams[select.value] = { info: d.info, t: d.t, data: d.data };
-      store.events = events;
-      if (d.t.length) { store.tStart = d.t[0]; store.tEnd = d.t[d.t.length - 1]; }
-      render(traceBody, { type: "timeseries", streams: [select.value], window_s: 1e9, y: { unit: d.info.units[0] } }, store);
+    const derived = new Set(streams.map((x) => x.id));
+    const trendView = views.find((v) => v.type === "timeseries" && v.streams.length && v.streams[0].endsWith("/mean_rel") && derived.has(v.streams[0]))
+      || views.find((v) => v.type === "timeseries" && v.section === "trends" && v.streams.every((s) => derived.has(s)));
+    const select = h("select", { "aria-label": "Stream" }, raw.map((s) => h("option", { value: s.id }, `${s.id} (${s.channels.length} ch, ${s.rate} Hz)`)));
+    const trendBody = h("div"), rawBody = h("div"), segChips = h("div", { class: "row seg-chips" });
+    let range = null, full = null;
+    async function loadInto(body, stream, spec) {
+      const q = new URLSearchParams({ max_points: "3000" });
+      if (range) { q.set("from", String(range[0])); q.set("to", String(range[1])); }
+      const d = await api(`/sessions/${id}/streams/${stream}?${q}`);
+      const st = new Store(1e12);
+      st.streams[stream] = { info: d.info, t: d.t, data: d.data };
+      st.events = events;
+      if (range) { st.tStart = range[0]; st.tEnd = range[1]; } else if (d.t.length) { st.tStart = d.t[0]; st.tEnd = d.t[d.t.length - 1]; }
+      if (!full && !range && d.t.length) full = [d.t[0], d.t[d.t.length - 1]];
+      render(body, { type: "timeseries", window_s: 1e9, ...spec, streams: [stream] }, st);
     }
-    select.addEventListener("change", loadTrace);
+    async function loadTimeline() {
+      try {
+        if (select.value) await loadInto(rawBody, select.value, { y: { unit: (raw.find((s) => s.id === select.value) || { units: [""] }).units[0] } });
+        else rawBody.replaceChildren(notice("No raw streams."));
+        if (trendView) await loadInto(trendBody, trendView.streams[0], trendView);
+      } catch (e) { rawBody.replaceChildren(notice(e.message, true)); }
+    }
+    select.addEventListener("change", loadTimeline);
+    function segments() {
+      const marks = events.filter((e) => e.type === "marker").sort((a, b) => a.t - b.t);
+      const out = events.filter((e) => e.type.startsWith("calibration.eyes_")).map((e) => [e.t, e.t + (e.duration || 0), "calibration, " + e.type.slice(16).replace("_", " ")]);
+      marks.forEach((m, i) => {
+        const label = ((m.data && m.data.label) || "").trim();
+        const end = i + 1 < marks.length ? marks[i + 1].t : full ? full[1] : m.t;
+        if (label && label !== "-" && end - m.t >= 5) out.push([m.t, end, label]);
+      });
+      return out.sort((a, b) => a[0] - b[0]);
+    }
+    function drawChips() {
+      const t0 = full ? full[0] : 0;
+      const chip = (label, r) => h("button", { class: "chip-btn" + (JSON.stringify(r) === JSON.stringify(range) ? " active" : ""),
+        onclick: () => { range = r; drawChips(); loadTimeline(); } }, label);
+      segChips.replaceChildren(chip("Whole session", null),
+        ...segments().map(([a, b, label]) => chip(`${label} ${clock(a - t0)}–${clock(b - t0)}`, [a, b])));
+    }
+    const timeline = h("div", { class: "card wide" }, h("div", { class: "row" }, sub("Timeline", HELP.timeline)), segChips,
+      trendView ? [h("h3", {}, trendView.title), trendBody]
+        : h("p", { class: "muted small" }, "Run Analyze to add band power over time to the timeline."),
+      h("div", { class: "row" }, h("h3", {}, "Recorded signal"), h("span", { class: "spacer" }), select), rawBody);
 
-    // derived views (available after offline analysis)
+    // other charts from the analysis (whole session); last-value views (bars, metrics) don't summarise a session
     const available = new Set(streams.map((s) => s.id));
-    const viewCards = [];
-    for (const v of sess.views || []) {
-      if (v.type === "events" || v.type === "text") {
+    const chartCards = views.filter((v) => v !== trendView && !["text", "bars", "metric", "table", "spectrum"].includes(v.type))
+      .sort((a, b) => ORDER.indexOf(sectionOf(a)) - ORDER.indexOf(sectionOf(b)))
+      .filter((v) => v.type === "events" || v.streams.every((s) => available.has(s)))
+      .map((v) => {
         const body = h("div");
-        render(body, v, { streams: {}, events });
-        viewCards.push(h("div", { class: "card" }, sub(v.title, v.description), body));
-      } else if (v.streams.every((s) => available.has(s)) && v.type !== "spectrum") {
-        const body = h("div");
-        viewCards.push(h("div", { class: "card" }, sub(v.title, v.description), body));
-        (async () => {
-          const store = new Store(1e12);
+        if (v.type === "events") render(body, { ...v, window_s: 1e9 }, { streams: {}, events });
+        else (async () => {
+          const st = new Store(1e12);
           for (const s of v.streams) {
             const d = await api(`/sessions/${id}/streams/${s}?max_points=2000`);
-            store.streams[s] = { info: d.info, t: d.t, data: d.data };
-            if (d.t.length) { store.tStart = d.t[0]; store.tEnd = d.t[d.t.length - 1]; }
+            st.streams[s] = { info: d.info, t: d.t, data: d.data };
+            if (d.t.length) { st.tStart = d.t[0]; st.tEnd = d.t[d.t.length - 1]; }
           }
-          store.events = events;
-          render(body, { ...v, window_s: 1e9 }, store);
+          st.events = events;
+          render(body, { ...v, window_s: 1e9 }, st);
         })().catch((e) => body.replaceChildren(notice(e.message, true)));
-      }
-    }
+        return h("div", { class: "card" }, sub(v.title, v.description), body);
+      });
 
+    // details
+    const completeness = Object.entries(sess.stats || {}).filter(([sid]) => !sid.includes("/")).map(([sid, s]) => h("tr", {},
+      h("td", {}, sid), h("td", {}, String(s.samples)),
+      h("td", {}, s.nominal_rate ? pct(100 * s.samples / (s.samples + (s.missing_samples || 0)), 1) : "–"),
+      h("td", {}, fmt(s.effective_rate)), h("td", {}, fmt(s.nominal_rate)), h("td", {}, String(s.gaps))));
+    const metricTables = allReports.filter((r) => !r.title.endsWith(": Session description")).map((r) => h("div", { class: "card" },
+      sub(r.title, HELP.pluginReports, "h3"),
+      h("table", { class: "kv" }, Object.entries(r.metrics).map(([k2, v]) => h("tr", {}, h("th", {}, k2), h("td", {}, typeof v === "number" ? fmt(v) : String(v ?? "–"))))),
+      r.notes.map((n) => h("p", { class: "muted small" }, n))));
+    const details = h("details", { class: "details" }, h("summary", {}, "Details"),
+      h("div", { class: "grid" },
+        h("div", { class: "card table-wrap" }, sub("Data completeness", HELP.completeness, "h3"), h("table", {},
+          h("tr", {}, th("Stream"), th("Samples"), th("Received"), th("Rate"), th("Expected"), th("Gaps")), completeness)),
+        h("div", { class: "card" }, sub("HTML reports", HELP.reports, "h3"), reports.length
+          ? h("ul", {}, reports.map((r) => h("li", {}, h("a", { href: `${API}/sessions/${id}/reports/${r}${token() ? "?token=" + encodeURIComponent(token()) : ""}`, target: "_blank" }, r))))
+          : h("p", { class: "muted" }, "Run Analyze to create a report."),
+          sub("Plugin versions", HELP.versions, "h3"),
+          h("p", { class: "muted small" }, Object.values((analysis || sess).plugins || {}).join(" · ") || "–")),
+        metricTables));
+
+    const dev = sess.device ? sess.device.model || sess.device.name : "";
+    const src = (((sess.pipeline || {}).source) || {}).plugin;
     app.replaceChildren(
       h("div", { class: "row" }, h("h1", {}, sess.label || "Session"),
-        h("span", { class: "with-info" }, statusChip(sess.status), info(HELP.status, "status")), h("span", { class: "spacer" }),
-        sess.mode === "live" ? [speed, replayBtn, info(HELP.replay, "Replay"),
-          analyze, info(HELP.analyze, "Analyze offline"), exportBtn("csv"), exportBtn("edf")] : null),
-      h("div", { class: "muted" }, `${sess.id} · ${when(sess.started_at)} · ${duration(sess.started_at, sess.ended_at)}${sess.error ? " · " + sess.error : ""}`),
+        h("span", { class: "with-info" }, statusChip(sess.status), info(HELP.status, "status"))),
+      h("div", { class: "muted" }, [when(sess.started_at), sessionLength(sess), dev, VIA[src],
+        sess.error].filter(Boolean).join(" · ")),
+      sess.mode === "live" ? h("div", { class: "row controls" }, speed, replayBtn, info(HELP.replay, "Replay"),
+        analyze, info(HELP.analyze, "Analyze"), exportMenu, info(HELP.export, "Export")) : null,
       msg,
-      h("div", { class: "grid" },
-        h("div", { class: "card wide" }, h("div", { class: "row" }, sub("Recorded signal", HELP.recorded), h("span", { class: "spacer" }), select), traceBody),
-        h("div", { class: "card table-wrap" }, sub("Streams", HELP.streams), h("table", {},
-          h("tr", {}, th("Stream"), th("Samples", HELP.samples), th("Rate", HELP.rate), th("Nominal", HELP.nominal),
-            th("Gaps", HELP.gaps), th("Missing", HELP.missing)), statsRows)),
-        h("div", { class: "card" }, sub("Reports", HELP.reports), reports.length
-          ? h("ul", {}, reports.map((r) => h("li", {}, h("a", { href: `${API}/sessions/${id}/reports/${r}${token() ? "?token=" + encodeURIComponent(token()) : ""}`, target: "_blank" }, r))))
-          : h("p", { class: "muted" }, "Run an offline analysis to create a report.")),
-        reportCards, viewCards));
-    loadTrace().catch((e) => traceBody.replaceChildren(notice(e.message, true)));
+      h("div", { class: "grid" }, summary, timeline),
+      chartCards.length ? h("section", { class: "live-section" }, sub("Charts", HELP.charts), h("div", { class: "grid" }, chartCards)) : null,
+      details);
+    await loadTimeline();
+    drawChips();
   }
 
   async function pagePlugins() {
@@ -393,7 +612,8 @@
   async function route() {
     cleanup.forEach((f) => f()); cleanup = [];
     const hash = location.hash || "#/live";
-    document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("active", hash.startsWith(a.getAttribute("href"))));
+    document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("active",
+      hash.startsWith(a.getAttribute("href")) || (a.getAttribute("href") === "#/sessions" && hash.startsWith("#/session/"))));
     try {
       if (hash.startsWith("#/session/")) await pageSession(decodeURIComponent(hash.slice(10)));
       else if (hash.startsWith("#/sessions")) await pageSessions();

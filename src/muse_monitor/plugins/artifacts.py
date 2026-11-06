@@ -97,7 +97,7 @@ class Artifacts(Analyzer):
         self.ctx.emit(Event(kind, cur[0], duration=cur[1] - cur[0], data={"peak": round(cur[2], 3)}))
 
     def views(self) -> list[ViewSpec]:
-        return [ViewSpec(id="events", title="Artifacts", type="events", event_types=["artifact."],
+        return [ViewSpec(id="events", title="Artifacts", section="events", type="events", event_types=["artifact."],
                          description="Moments when the signal was disturbed by something other than brain "
                                      "activity: blinks (large frontal spikes), jaw clenching (high-frequency muscle "
                                      "noise) and head movement (accelerometer). Some are normal; many in a row "

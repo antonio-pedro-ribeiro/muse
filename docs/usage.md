@@ -191,82 +191,74 @@ start, printed once, and stored in `recordings/.muse/token`.
 
 ## 4. Web interface
 
-Start `muse serve` and open `http://127.0.0.1:8765`. The top bar has three pages: **Live**,
-**Sessions** and **Plugins**.
+Start `muse serve` and open `http://127.0.0.1:8765`. The top bar has **Live** and **Sessions**, with
+**Plugins** (a reference page) on the right. Each page is arranged around the questions you ask while
+using it: is the signal good, what is it doing now, how did it change, what happened. Technical detail
+sits in a collapsed **Details** section at the bottom.
 
 Every heading, field, button and table column has an **ⓘ icon**. Hover over it or tap it to read
 what the element means.
 
 If the server needs a token, the page asks for it once and remembers it in this browser.
 
-### Live
+### Live: starting a session
 
-**When no session is running**, the page shows a *Start a session* form:
+When no session is running, the page shows *Start a session*:
 
-| Field | Meaning |
+| Part | Meaning |
 |---|---|
-| Source | `openmuse` for the headband, `synthetic` for test signals. Sources whose dependencies are missing are greyed out. |
+| Source | Pick one card: **Headband (Bluetooth)**, **Via Mind Monitor** or **Test signals**. A card is greyed out, with the reason, if its dependency is missing. |
 | Label | Optional session name. |
 | Record to disk | Save the raw data (on by default). If off, nothing is stored. |
-| Source options | Settings for the source, generated from the plugin. For the headband, leave *address* empty to use the strongest one in range, and keep *preset* at p1041 for all sensors. |
-| Analyzers | Tick the processing steps to run. Each one adds charts. Hover over ⓘ for a description. |
+| Advanced ▸ | Source settings (for the headband, leave *address* empty to use the strongest one in range) and which analyzers run. The defaults suit most sessions; the analyzers always run in dependency order. |
 
-Press **Start session**. If the last session failed, the page shows why above the form.
+The last session is shown above the form, with a link to open it.
 
-**While a session runs**, the page shows:
+### Live: during a session
 
-- **Header:** the session status, elapsed time and headband battery.
-- **Add marker:** type a label (for example "eyes closed" or "reading") and press the button. It's
-  saved with a timestamp and drawn as a dashed line in the charts. Labelled markers are what
-  `train-probe` learns from.
-- **Calibrate (2 min):** a personal baseline. Keep your eyes open and relaxed for 60 s, then closed
-  for 60 s. Band power is then also shown relative to this baseline.
-- **Stop:** ends the session and finishes writing the recording.
-- **Plugin chips:** one per plugin. Green means working. Yellow means degraded, for example
-  Bluetooth packets lost. Red means it stopped after an error, while the rest keeps running.
-  "dropped" counts chunks an analyzer skipped because it fell behind. The recording never drops
-  data.
-- **Charts**, one card per analyzer view, updated about 10 times a second:
+From top to bottom:
 
-| Card (analyzer) | What you see |
-|---|---|
-| Signal quality, Usable channels (`quality`) | Per electrode: good, poor contact, noisy or flat, and how many electrodes are usable. Fix contact before trusting anything else. |
-| EEG (filtered) (`filter`) | The last seconds of each channel, band-passed to 1–40 Hz with mains hum removed. Display only; raw data is stored unfiltered. |
-| Relative band power (`bandpower`) | Share of power in delta (1–4 Hz), theta (4–8), alpha (8–13), beta (13–30) and gamma (30–45). Alpha usually rises with eyes closed; blinks and movement inflate delta. |
-| Band power over time, Spectrum | The same values over the last 2 minutes, and the full spectrum. A sharp spike at 50/60 Hz is mains interference. |
-| Band power vs. baseline | Power divided by your eyes-open calibration (1 = same as baseline). Empty until you calibrate. |
-| Artifacts (`artifacts`) | Blinks, jaw clenches and movement as events. |
-| Probe output (`cbramod` with a head) | Probability per label from your trained probe ([section 6](#6-models-and-probes)). |
-| Session description (`describe`) | Every 30 s, a plain-language paragraph: signal quality, how power is spread over the bands (against your baseline once calibrated), blinks, jaw clenching and movement. It describes the signal, not states of mind. The end-of-session report adds one paragraph for the whole session and one per marker or calibration segment. |
+- **Header:** label, status, elapsed time, battery, how the data arrives (*via Bluetooth*, *via Mind
+  Monitor*, *test signals*, or *replay 5× · recorded …*), and **Stop**.
+- **Add marker** (type a label, press Enter or the button) and **Calibrate (2 min)**. Both are hidden
+  during a replay.
+- **Calibration banner:** while calibrating, a banner says when to keep your eyes open and when to close
+  them, with a countdown, then confirms when the baseline is ready.
+- **Signal check:** contact quality per electrode and the share of usable electrodes. A warning appears
+  when fewer than half have good contact. Check this first.
+- **Right now:** the latest session description (every 30 s) and the current band power. With a trained
+  probe, its output appears here too.
+- **Trends:** band power over the last 2 minutes, and against your baseline once you have calibrated.
+- **Signal:** the filtered EEG traces and the spectrum.
+- **Events:** earlier descriptions, calibration, blinks, jaw clenching and movement.
+- **Details** (collapsed): one chip per plugin (green working, yellow degraded, red stopped after an
+  error; "dropped" counts chunks an analyzer skipped because it fell behind; the recording never drops
+  data), the session id and the device.
+
+Cards appear once they have data, so a section stays hidden until it has something to show.
 
 ### Sessions
 
-A table of all recordings, newest first, with start time, label, duration, device, number of gaps
-and status. Click a row to open the session.
+A table of all recordings, newest first: start time, label, length, device, usable share (good
+contact), data received, the first line of the description, and status. Use the search box to filter
+by label or description. Click a row to open the session.
 
 ### Session
 
-The page for one recording:
-
-- **Replay** (with a speed: 1×, 2×, 5× or 10×): plays the recording back on the **Live** page as if it
-  were happening now, with the analyzers it was recorded with plus the session description, so you can
-  watch the charts and the description unfold. Markers and calibration from the recording are replayed
-  too. A *replay* chip marks it, times shown are the original recording times, and adding markers or
-  calibrating is off. Nothing is saved and the recording isn't changed. Press **Stop** to end it early.
-  Only one live session can run at a time.
-- **Analyze offline:** replays the recording through the analyzers as fast as possible and creates a
-  report. A progress bar shows while it runs.
-- **Export CSV / Export EDF:** downloads the data. CSV comes as a zip with one file per stream plus
-  events; EDF+ is a single file for EEG tools.
-- **Recorded signal:** the whole recording for one stream, reduced for display with peaks kept,
-  plus markers. Pick the stream from the list: `eeg` (brain signal), `acc` (head movement), `gyro`
-  (rotation) or `optics` (blood-flow sensors).
-- **Streams:** samples, measured rate, expected rate, gaps and missing samples per stream. A rate
-  well below the expected one, or many gaps, points to a weak Bluetooth link.
-- **Reports:** HTML summaries from offline analyses. Each opens in a new tab and is a single file
-  you can keep.
-- **Plugin reports and charts:** each analyzer's end-of-session summary, plus charts over the whole
-  session once an offline analysis has run.
+- **Actions:** **Replay** at 1×, 2×, 5× or 10× plays the recording on the Live page as if it were
+  happening now (nothing is saved; markers and calibration are replayed; marker and calibrate
+  controls are off). **Analyze** runs the analyzers over the whole recording and refreshes this page.
+  **Export ▾** downloads CSV (zip) or EDF+.
+- **Summary:** length, usable share, data received, blinks per minute and alpha share, then the session
+  description for the whole recording and for each marked or calibration segment.
+- **Timeline:** band power over time (after Analyze) and the recorded signal, on one time axis with
+  markers as dashed lines. Click a segment chip (for example *eyes closed 01:30–03:00*) to zoom every
+  chart to it; *Whole session* zooms back out. Pick the stream (`eeg`, `acc`, `gyro`, `optics`) on the
+  right.
+- **Charts:** the analyzers' charts over the whole session, such as calibration, artifacts and the
+  baseline comparison.
+- **Details** (collapsed): data completeness per stream (received share, rates, gaps), HTML reports,
+  plugin versions, and each analyzer's end-of-session numbers.
 
 ### Plugins
 

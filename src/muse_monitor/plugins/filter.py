@@ -48,7 +48,7 @@ class Filter(Analyzer):
 
     def views(self) -> list[ViewSpec]:
         c = self.config
-        return [ViewSpec(id="eeg", title="EEG (filtered)", type="timeseries", streams=["eeg"], window_s=5.0,
+        return [ViewSpec(id="eeg", title="EEG (filtered)", section="signal", type="timeseries", streams=["eeg"], window_s=5.0,
                          description=f"The EEG voltage of each electrode over the last 5 s, filtered to "
                                      f"{c.low_hz:g}-{c.high_hz:g} Hz" + (f" with a {c.notch_hz:g} Hz mains notch"
                                      if c.notch_hz else "") + " so it is easier to read. Filtering is for display "

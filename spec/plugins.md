@@ -121,6 +121,7 @@ class ViewSpec(BaseModel):
     y: Axis | None = None              # label, unit, min, max, log
     thresholds: list[Threshold] = []   # colored bands
     event_types: list[str] = []        # "events"/"text" views: type prefixes ("text": paragraphs in data.text)
+    section: Literal["quality", "now", "trends", "signal", "events", ""] = ""   # page area; "" = by type
 ```
 
 Every view and every config option (`Field(description=...)`) carries a short plain-language

@@ -272,8 +272,8 @@
     const evs = (store.events || []).filter((e) => e.data && e.data.text &&
       (!prefixes.length || prefixes.some((p) => e.type.startsWith(p))));
     if (!evs.length) return empty(container, "nothing to describe yet");
-    const limit = spec.window_s >= 1e8 ? evs.length : 20;
-    const list = el("div", "text-view");
+    const limit = spec.limit || (spec.window_s >= 1e8 ? evs.length : 20);
+    const list = el("div", "text-view" + (limit === 1 ? " latest" : ""));
     for (const e of evs.slice(-limit).reverse()) {
       const item = el("div", "text-item");
       const t0 = new Date(e.t * 1000).toLocaleTimeString();

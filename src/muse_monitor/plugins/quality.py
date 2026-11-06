@@ -66,7 +66,7 @@ class Quality(Analyzer):
     def views(self) -> list[ViewSpec]:
         c = self.config
         return [
-            ViewSpec(id="std", title="Signal quality (std per channel)", type="bars", streams=["std"],
+            ViewSpec(id="std", title="Signal quality (std per channel)", section="quality", type="bars", streams=["std"],
                      description="How much each electrode's signal varies (standard deviation over the last "
                                  f"{c.window_s:g} s). Green is a normal range. Near zero means a flat signal, usually "
                                  "no skin contact; very high values mean noise, often movement or a loose band. "
@@ -75,7 +75,7 @@ class Quality(Analyzer):
                      thresholds=[Threshold(max=c.flat_uv, level="bad", label="flat"),
                                  Threshold(min=c.flat_uv, max=c.noisy_uv, level="ok", label="ok"),
                                  Threshold(min=c.noisy_uv, level="bad", label="noisy")]),
-            ViewSpec(id="usable", title="Usable channels", type="metric", streams=["usable"],
+            ViewSpec(id="usable", title="Usable channels", section="quality", type="metric", streams=["usable"],
                      description="Share of EEG channels that currently pass the quality check (not flat, not noisy, "
                                  "no large drift, little mains hum). Band power averages only use these channels.",
                      y=Axis(unit="%", min=0, max=1),

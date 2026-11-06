@@ -7,6 +7,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 ViewType = Literal["timeseries", "spectrum", "bars", "metric", "table", "events", "text"]
+# Where interfaces place a view: is the signal good / what is it doing now / over time / the raw signal / what happened
+Section = Literal["quality", "now", "trends", "signal", "events", ""]
 
 
 class Axis(BaseModel):
@@ -38,4 +40,5 @@ class ViewSpec(BaseModel):
     thresholds: list[Threshold] = Field(default_factory=list)
     event_types: list[str] = Field(default_factory=list)   # "events"/"text" views: type prefixes to show
                                                             # ("text": events whose data.text is a paragraph)
+    section: Section = ""                                   # page area; "" = interface decides (by type)
     plugin: str = ""                                        # set by the kernel

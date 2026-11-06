@@ -1,5 +1,9 @@
 # Muse Monitor
 
+[![Latest release](https://img.shields.io/github/v/release/antonio-pedro-ribeiro/muse?sort=semver&label=latest%20release)](https://github.com/antonio-pedro-ribeiro/muse/releases/latest)
+[![CI](https://github.com/antonio-pedro-ribeiro/muse/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/antonio-pedro-ribeiro/muse/actions/workflows/ci.yml)
+![Python 3.13](https://img.shields.io/badge/python-3.13-blue)
+
 Record, watch and analyze EEG from a **Muse S Athena** headband on your own computer. Muse Monitor
 connects to the headband directly over Bluetooth (or through the Mind Monitor phone app), shows the signal
 live in your browser or terminal, saves every session losslessly, and describes what it measured in plain
@@ -35,6 +39,10 @@ uv sync                          # install
 uv run muse check                # 10 s connection test with the headband on
 uv run muse serve                # web interface at http://127.0.0.1:8765
 ```
+
+To install the app without cloning, download the wheel (`.whl`) from the
+[latest release](https://github.com/antonio-pedro-ribeiro/muse/releases/latest) and run
+`uv tool install muse_monitor-<version>-py3-none-any.whl`. The `muse` command is then available everywhere.
 
 Before connecting: close the Muse phone app, and don't pair the headband in Windows Bluetooth settings
 (the app connects without pairing).

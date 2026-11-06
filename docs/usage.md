@@ -36,6 +36,31 @@ Before connecting:
 - **Close the Muse phone app.** The headband is only visible when nothing else is connected to it.
 - Turn the headband on and put it on. Wet the sensors slightly if the signal is poor.
 
+### Alternative: through the Mind Monitor app
+
+If the headband is paired with the Mind Monitor app on your phone, the app can relay the data to this
+computer instead of the app connecting over Bluetooth itself.
+
+1. Put the phone and this computer on the same Wi-Fi network.
+2. In Mind Monitor's settings, set **OSC Stream Target IP** to this computer's local address (for
+   example `192.168.1.10`; `muse run --source mindmonitor` lists it if no data arrives) and **OSC Stream
+   Port** to `5000`. Leave the OSC path prefix empty.
+3. Allow UDP port 5000 through the Windows firewall, for example from an administrator terminal:
+   `netsh advfirewall firewall add rule name="muse-monitor OSC" dir=in action=allow protocol=UDP localport=5000`
+4. Start streaming in Mind Monitor, then check with `muse devices --source mindmonitor`.
+5. Record with `muse run --source mindmonitor -o eeg_offset_uv=800`, or pick **mindmonitor** as the
+   source on the web **Live** page.
+
+Things to know:
+
+- **Timing is reconstructed.** OSC messages carry no packet counter or device timestamp, so sample times
+  are rebuilt from the sample rate and arrival times, and lost samples are only *inferred* (a loss
+  shorter than about half a second can go unnoticed). The direct Bluetooth link is more exact.
+- **EEG offset.** Mind Monitor's raw EEG is not centred on zero. `eeg_offset_uv` subtracts a midpoint
+  (about 800 µV for classic Muse headbands); filtering and band power are unaffected either way.
+- **Markers.** Mind Monitor's marker buttons arrive as markers ("Mind Monitor marker 1" … "4").
+- **Port in use.** Only one program can listen on the port; close other OSC receivers first.
+
 ## 2. Quick start
 
 ```
@@ -73,7 +98,7 @@ Session ids are long (for example `01M6RW2KD771V17B86FV25ZE5M`). If the table cu
 
 | Command | What it does |
 |---|---|
-| `muse devices [--source openmuse]` | Scans for headbands and lists name, address and signal strength (RSSI). |
+| `muse devices [--source openmuse\|mindmonitor]` | Scans for headbands and lists name, address and signal strength (RSSI). With `mindmonitor`, listens on UDP port 5000 for a few seconds and reports whether Mind Monitor is streaming. |
 | `muse check [--duration 30] [--save raw.txt]` | Connects, streams briefly and reports sample rates, packet loss, battery and a rough contact check per electrode. Passes when EEG arrives at 90% or more of 256 Hz with at most 2% loss. Same as `muse-check test`. |
 
 ### Live sessions: `muse run`
@@ -87,7 +112,7 @@ muse run [--source openmuse] [-a ANALYZER]... [-o key=value]... [--label TEXT]
 
 | Option | Meaning |
 |---|---|
-| `--source` | `openmuse` (the headband, default) or `synthetic` (test signals) |
+| `--source` | `openmuse` (the headband over Bluetooth, default), `mindmonitor` (relayed by the Mind Monitor app) or `synthetic` (test signals) |
 | `-a, --analyzer` | Analyzers to run (repeatable). Default: `quality`, `filter`, `baseline`, `bandpower`, `artifacts`, `describe` |
 | `-o, --option key=value` | Source setting, for example `-o address=00:55:DA:BB:E0:4C` or `-o preset=p21` |
 | `--label` | A name for the session, shown in lists and reports |
@@ -355,6 +380,7 @@ The headband's serial number is stored only as a salted hash. EEG is personal da
 | Symptom | What to try |
 |---|---|
 | `device not found` (exit code 3) | Turn the headband on, close the Muse phone app, and remove the headband from Windows Bluetooth settings if it's paired. |
+| `no EEG from Mind Monitor on UDP port 5000` | Check the app's target IP is this computer's address (listed in the message), the port matches, the path prefix is empty, streaming is on, both devices share the Wi-Fi, and the firewall allows UDP 5000. |
 | Connects, then drops immediately | The headband is paired in Windows; remove it there. |
 | Signal quality shows poor contact or noisy | Adjust the band so the forehead and behind-the-ear sensors touch the skin, moisten them, and sit still for a few seconds. |
 | Many gaps or a low rate in the Streams table | Move closer to the computer and away from other 2.4 GHz devices. About 1–2% loss is normal. |

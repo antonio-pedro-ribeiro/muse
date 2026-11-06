@@ -95,6 +95,7 @@ A plugin whose extra isn't installed is listed as `unavailable` with an install 
 | Declarative views | One description for web, CLI and reports | Per-plugin frontend code |
 | Replay for offline | One code path, live and offline results agree | Separate batch API |
 | Direct BLE via OpenMuse | Already working in `check.py`; one less hop, real packet counters for gap detection | Android app → HTTP: extra app, unknown format, more latency |
+| Mind Monitor OSC as an alternative source | Requested for when the phone holds the Bluetooth link; plain OSC/UDP, documented paths | Making it the default: no packet counters or device timestamps, so gaps are only inferred from timing |
 | CBraMod as the built-in model | 4.9M params (CPU real time), BSD-3, already in braindecode | ZUNA: 382M params, unproven on 4 dry channels; REVE/LUNA: restrictive licenses |
 | No plugin HTTP routes or ingest hook | Nothing needs push ingestion with BLE; kernel stays framework-free | `ctx.http`; add an ingest hook only if a push source appears |
 

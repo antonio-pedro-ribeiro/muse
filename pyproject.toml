@@ -13,6 +13,7 @@ dependencies = [
     "openmuse",
     "pyarrow>=17",
     "pydantic>=2.7",
+    "python-osc>=1.8",
     "rich>=13",
     "scipy>=1.13",
     "typer>=0.12",
@@ -36,6 +37,7 @@ muse-check = "muse_monitor.check:main"
 [project.entry-points."muse_monitor.plugins"]
 synthetic = "muse_monitor.plugins.synthetic:Synthetic"
 openmuse = "muse_monitor.plugins.openmuse:OpenMuseSource"
+mindmonitor = "muse_monitor.plugins.mindmonitor:MindMonitor"
 replay = "muse_monitor.plugins.replay:Replay"
 quality = "muse_monitor.plugins.quality:Quality"
 filter = "muse_monitor.plugins.filter:Filter"

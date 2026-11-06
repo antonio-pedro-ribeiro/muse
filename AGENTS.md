@@ -18,6 +18,9 @@ Muse S Athena ──BLE 5.3 (OpenMuse)──▶ this application
 
 **Decision:** the application connects to the headband directly over BLE using OpenMuse (see
 `src/muse_monitor/check.py`). No phone app in the path. The architecture is specified in `spec/`.
+**Alternative (2026-11-06):** the `mindmonitor` source receives the stream relayed by the Mind Monitor phone app
+(OSC over UDP, default port 5000) for when the phone holds the Bluetooth link. Direct BLE stays the default: OSC
+has no packet counters or device timestamps, so timing is rebuilt and gaps are only inferred.
 
 ### Goals
 
@@ -34,7 +37,7 @@ Muse S Athena ──BLE 5.3 (OpenMuse)──▶ this application
 - Medical diagnosis. This is a consumer device and the outputs are not clinical. Do not word UI text or reports as
   diagnoses.
 - Writing our own BLE stack. Use OpenMuse for connection and packet decoding.
-- Receiving data from a phone app (HTTP/OSC). Revisit only if a concrete need appears.
+- Receiving data from phone apps other than Mind Monitor, or over HTTP.
 
 ## Repository layout and commands
 
@@ -49,6 +52,7 @@ uv run muse-check test                    # connect, stream 10 s, report rates/l
 uv run muse-check test --duration 30 --save raw.txt   # also save raw packets (OpenMuse text format)
 uv run OpenMuse stream --address <MAC>    # publish LSL streams
 uv run muse run --calibrate --duration 10m   # live session: dashboard + recording
+uv run muse run --source mindmonitor -o eeg_offset_uv=800   # via the Mind Monitor app (OSC, UDP 5000)
 uv sync --extra models && uv run muse models pull cbramod   # model weights (M5)
 uv run muse train-probe ID ID ID --label-from calibration   # probe vs band power
 ```

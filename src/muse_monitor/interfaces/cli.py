@@ -157,7 +157,8 @@ def devices(source: str = "openmuse", json_out: JsonOpt = False, server: ServerO
                 console.print("No devices found. Is the headband on, and not connected to the phone app?")
                 raise typer.Exit(3)
             for d in rows:
-                console.print(f"  {d['name']:<16} {d['id']}  RSSI {d.get('rssi')} dBm")
+                rssi = f"  RSSI {d['rssi']} dBm" if d.get("rssi") is not None else ""
+                console.print(f"  {d['name']:<16} {d['id']}{rssi}")
         emit(found, json_out, human)
     run(go())
 

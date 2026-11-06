@@ -40,7 +40,7 @@ The app is built from small **plugins** of three kinds:
 
 | Kind | Role | Examples |
 |---|---|---|
-| **Source** | Where data comes from | `openmuse` (your headband), `synthetic` (made-up test signals), `replay` (an earlier recording) |
+| **Source** | Where data comes from | `openmuse` (your headband, over Bluetooth), `mindmonitor` (your headband via the Mind Monitor phone app), `synthetic` (made-up test signals), `replay` (an earlier recording) |
 | **Analyzer** | Turns the signal into something useful, and describes the charts to show | signal quality, filtering, band power, blinks and movement, the CBraMod AI model |
 | **Sink** | Where data goes | `recorder` (saves to disk), `export` (CSV/EDF+) |
 

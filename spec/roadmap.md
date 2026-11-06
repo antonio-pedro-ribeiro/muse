@@ -44,13 +44,14 @@ CI: `uv run pytest -m "not device"`, `ruff`, `pyright --strict` on `sdk/` and `k
 | M6 | Done. `artifacts`, CSV and EDF+ export. The 30 min real recording's EDF+ opens in MNE 1.13 without warnings: 30 channels, units `uV`, 2,673 annotations (gaps, blinks, jaw); every channel matches the raw data within 16-bit rounding up to the last sample; markers land at their exact times. Fixed while verifying: samples were placed by counter at the nominal rate, which drifted ~5 s from the annotations over 30 min (device clocks run off nominal), so the export now resamples by timestamp; µ was written as `?` in the unit field; `--out` with a folder failed. Regression test reads the EDF+ back with MNE (`mne` is a dev dependency) |
 | Describe | Done (2026-11-06). `describe` analyzer + `text` view type: plain-language descriptions every 30 s and per segment in the report, quality-gated, artifact-aware, probe quoted only if validated (held-out margin ≥ 0.05, most sessions); banned-word check in code and tests. Verified via CLI, report and web Session page on scripted synthetic sessions; not yet read on real recordings |
 | Replay | Done (2026-11-06). Session page **Replay** (1/2/5/10×) plays a recording back as a live session (no recording; analyzers as recorded + `describe`), so the live views and descriptions can be watched on old data. `POST /sessions/{id}/replay`. Verified in Chromium |
+| Mind Monitor | Done (2026-11-06). `mindmonitor` source: OSC over UDP (port 5000), EEG/acc/gyro/PPG/optics, battery, `/Marker/N` → markers; times rebuilt from rate + arrival; EEG gaps inferred from timing; rates measured at start. Tested with a scripted OSC sender on localhost (unit, CLI, discovery). **Pending:** a run with the real app and headband; Athena-specific paths, battery units and EEG offset are unconfirmed (vendor spec blocks automated access) |
 | Docs | Done. [`docs/getting-started.md`](../docs/getting-started.md) (concepts, first session), [`docs/usage.md`](../docs/usage.md) (CLI, web UI, pipelines, troubleshooting) and [`docs/pending.md`](../docs/pending.md) (step-by-step instructions to complete M5) |
 
 **Next:** follow [`docs/pending.md`](../docs/pending.md): record 3+ calibrated sessions with the headband worn, which closes the M1 signal-quality check and gives M5 its real acceptance data; measure M4 CPU/latency during one of them.
 
 ## 5. Decided
 
-- **Device link:** direct BLE via OpenMuse (`openmuse` source). Phone/HTTP ingestion is out of scope.
+- **Device link:** direct BLE via OpenMuse (`openmuse` source), the default. Alternative: the `mindmonitor` source (Mind Monitor app → OSC over UDP), added 2026-11-06. Other phone apps and HTTP ingestion are out of scope.
 - **Built-in model:** CBraMod.
 
 ## 6. Open questions

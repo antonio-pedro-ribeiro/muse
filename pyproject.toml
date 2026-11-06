@@ -55,6 +55,7 @@ openmuse = { git = "https://github.com/DominiqueMakowski/OpenMuse" }
 
 [dependency-groups]
 dev = [
+    "mne>=1.13.2",
     "pytest>=9.2.0",
 ]
 

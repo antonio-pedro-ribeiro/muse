@@ -1634,6 +1634,7 @@ models = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "mne" },
     { name = "pytest" },
 ]
 
@@ -1659,7 +1660,10 @@ requires-dist = [
 provides-extras = ["models"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.2.0" }]
+dev = [
+    { name = "mne", specifier = ">=1.13.2" },
+    { name = "pytest", specifier = ">=9.2.0" },
+]
 
 [[package]]
 name = "narwhals"

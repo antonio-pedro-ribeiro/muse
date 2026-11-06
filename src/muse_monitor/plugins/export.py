@@ -49,7 +49,9 @@ class Export(Sink):
         if fmt == "csv":
             return export_csv(session_dir, out or session_dir / "export" / "csv")
         if fmt == "edf":
-            return [export_edf(session_dir, out or session_dir / "export" / f"{session_dir.name}.edf")]
+            if out is None or out.is_dir() or out.suffix.lower() != ".edf":   # a folder: name the file
+                out = (out or session_dir / "export") / f"{session_dir.name}.edf"
+            return [export_edf(session_dir, out)]
         raise ValueError(f"unknown export format {fmt!r}; use csv or edf")
 
 
@@ -82,6 +84,11 @@ def _field(value: Any, width: int) -> bytes:
     return s.ljust(width, b" ")
 
 
+def _ascii_unit(unit: str) -> str:
+    """EDF headers are ASCII: µV -> uV (which MNE and EDFbrowser recognise), ° -> deg."""
+    return unit.replace("µ", "u").replace("μ", "u").replace("°", "deg")
+
+
 def _num(x: float, width: int = 8) -> str:
     for prec in range(8, 0, -1):
         s = f"{x:.{prec}g}"
@@ -91,7 +98,11 @@ def _num(x: float, width: int = 8) -> str:
 
 
 def export_edf(session_dir: Path, out: Path) -> Path:
-    """EDF+C writer: 1 s data records, gaps zero-filled and annotated, events as annotations."""
+    """EDF+C writer: 1 s data records, gaps zero-filled and annotated, events as annotations.
+
+    EDF needs an exact, fixed rate, but the headband's clocks run slightly off nominal (e.g. EEG ~256.7 Hz).
+    Placing samples by counter would drift seconds from the annotations over a long session, so each
+    continuous run is linearly resampled onto the nominal grid by its timestamps. Raw files stay exact."""
     order = {"eeg": 0, "optics": 1, "acc": 2, "gyro": 3}
     raw = sorted((s for s in storage.list_streams(session_dir)
                   if "/" not in s.id and s.rate > 0 and float(s.rate).is_integer()),
@@ -112,16 +123,24 @@ def export_edf(session_dir: Path, out: Path) -> Path:
     duration = 0.0
     for info, t, idx, data in loaded:
         rate = int(info.rate)
-        offset = int(round((t[0] - start) * rate))
-        n = int(idx[-1] - idx[0]) + 1 + offset
+        rel = t - start
+        n = int(np.floor(rel[-1] * rate + 1e-6)) + 1
         filled = np.zeros((n, data.shape[1]), dtype=np.float64)
-        filled[offset + (idx - idx[0])] = data
+        for run in np.split(np.arange(len(t)), np.flatnonzero(np.diff(idx) != 1) + 1):
+            k0 = int(np.ceil(rel[run[0]] * rate - 1e-6))
+            k1 = int(np.floor(rel[run[-1]] * rate + 1e-6))
+            if k1 < k0:                                       # a lone sample: nearest grid slot
+                filled[min(n - 1, int(round(rel[run[0]] * rate)))] = data[run[0]]
+                continue
+            grid = np.arange(k0, k1 + 1) / rate
+            for c in range(data.shape[1]):
+                filled[k0:k1 + 1, c] = np.interp(grid, rel[run], data[run, c])
         for a in np.flatnonzero(np.diff(idx) > 1):          # gaps -> annotation
             annotations.append(((t[a] - start) + 1 / rate, (idx[a + 1] - idx[a] - 1) / rate, f"gap {info.id}"))
         duration = max(duration, n / rate)
         for c, ch in enumerate(info.channels):
             label = f"{info.kind.upper()} {ch}" if info.kind != "eeg" else f"EEG {ch}"
-            signals.append((label, info.units[c], rate, filled[:, c]))
+            signals.append((label, _ascii_unit(info.units[c]), rate, filled[:, c]))
     for e in storage.read_events(session_dir):
         if e["type"].startswith(("stream.gap", "kernel.")):
             continue

@@ -159,3 +159,28 @@ def test_local_plugin_directory(tmp_path: Path):
     reg = PluginRegistry(paths=[tmp_path])
     assert reg.manifest("mine").kind == "analyzer"
     assert any("broken.py" in k for k in reg.broken)
+
+
+def test_source_open_failure_skips_summaries(tmp_path: Path, caplog):
+    from muse_monitor.plugins.bandpower import BandPower
+    from muse_monitor.plugins.synthetic import Synthetic
+    from muse_monitor.sdk import DeviceNotFound
+
+    class Absent(Synthetic):
+        name = "absent"
+
+        async def open(self):
+            raise DeviceNotFound("no headband")
+    reg = PluginRegistry(paths=[])
+    reg.add(Absent)
+    reg.add(BandPower)
+    pipe = Pipeline(source=SourceEntry(plugin="absent"), analyzer=[PluginEntry(plugin="bandpower")])
+
+    async def go():
+        s = Session(reg, pipe, data_dir=tmp_path, mode="live")
+        with pytest.raises(DeviceNotFound):
+            await s.start()
+        return s
+    s = asyncio.run(go())
+    assert s.info.status == "failed" and "no headband" in s.info.error
+    assert "summarize() failed" not in caplog.text

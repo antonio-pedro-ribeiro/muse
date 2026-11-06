@@ -163,7 +163,7 @@ dashboard. Press `m` for a marker and `q` to stop.
 - **[usage.md](usage.md):** every command, option and page in detail, pipeline files, troubleshooting.
 - **Try the AI model:** run `uv sync --extra models` and `uv run muse models pull cbramod`, record
   a few calibrated sessions, then run `uv run muse train-probe ID1 ID2 ID3 --label-from calibration`.
-- **[spec/](spec/):** how the app is designed, for anyone who wants to write their own plugin.
+- **[spec/](../spec/):** how the app is designed, for anyone who wants to write their own plugin.
 
 ## Your data and privacy
 

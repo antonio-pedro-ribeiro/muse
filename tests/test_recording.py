@@ -1,6 +1,7 @@
 """Recording, crash safety, replay/offline analysis, reproducibility and export."""
 
 import asyncio
+import importlib.util
 import json
 import struct
 from pathlib import Path
@@ -100,6 +101,38 @@ def test_export_csv_and_edf(data_dir: Path):
     assert len(raw) == int(hdr[184:192]) + n_records * (2 * (4 * 256 + 3 * 52) + 2 * int(
         raw[256 + ns * 216 + (ns - 1) * 8: 256 + ns * 216 + ns * 8].decode()))
     assert b"marker eyes closed" in raw
+
+
+@pytest.mark.skipif(importlib.util.find_spec("mne") is None, reason="needs mne (dev dependency)")
+def test_edf_opens_in_mne_aligned_with_annotations(tmp_path: Path):
+    """The headband's clock runs off nominal (EEG ~256.7 Hz on the device we tested). Samples must land at their
+    real times in the EDF, or they drift seconds from the annotations over a long session."""
+    import mne
+
+    from muse_monitor.plugins.export import export_edf
+    rate, true_rate, t0 = 256, 256 * 1.003, 1e9
+    info = StreamInfo("eeg", "eeg", ["TP9", "AF7"], ["µV", "µV"], float(rate))
+    n = 600 * rate                                                     # 10 minutes
+    idx = np.arange(n)
+    idx = idx[(idx < 1000) | (idx >= 1100)]                            # 100 samples lost
+    t = t0 + idx / true_rate
+    x = np.stack([50 * np.sin(2 * np.pi * 0.37 * (t - t0)), np.full(len(t), -20.0)], axis=1)
+    w = storage.StreamWriter(storage.stream_base(tmp_path, "eeg"), info)
+    w.append(Chunk("eeg", x[:1000], t[:1000], 0))
+    w.append(Chunk("eeg", x[1000:], t[1000:], 1100))
+    w.flush()
+    with open(tmp_path / "events.jsonl", "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"type": "marker", "t": t0 + 500.0, "data": {"label": "late"}}) + "\n")
+    raw = mne.io.read_raw_edf(export_edf(tmp_path, tmp_path / "x.edf"), preload=True, verbose="error")
+    assert raw.ch_names == ["EEG TP9", "EEG AF7"] and raw.info["sfreq"] == rate
+    data = raw.get_data() * 1e6                                        # MNE gives volts: units must parse as uV
+    assert np.allclose(data[1, 2000:3000], -20.0, atol=0.01)
+    k = 500 * rate                                                     # at the marker, 500 s in
+    assert data[0, k] == pytest.approx(50 * np.sin(2 * np.pi * 0.37 * 500.0), abs=0.05)
+    ann = {d: o for o, d in zip(raw.annotations.onset, raw.annotations.description)}
+    assert ann["marker late"] == pytest.approx(500.0, abs=1e-3)
+    assert ann["gap eeg"] == pytest.approx(1000 / true_rate, abs=0.01)
+    assert raw.n_times == rate * 599            # 1 s records covering 598.2 s of real time (counter-based: 600)
 
 
 def test_session_id_validation(data_dir: Path):

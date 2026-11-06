@@ -24,7 +24,8 @@ EEG_TAGS = {4: 0x11, 8: 0x12}
 OPTICS_TAGS = {4: 0x34, 8: 0x35, 16: 0x36}
 ACCGYRO_TAG = 0x47
 BATTERY_TAGS = (0x88, 0x98)
-EEG_SCALE = 0.0885                     # µV per LSB (Athena), applied by OpenMuse
+EEG_SCALE = 1450.0 / 16383.0           # µV per LSB (Athena); OpenMuse applies this as raw14 * EEG_SCALE
+EEG_MIDPOINT_UV = 8192 * EEG_SCALE      # OpenMuse leaves the 14-bit midpoint in (0..1450 µV); we remove it
 
 
 async def scan(timeout: float) -> list[DeviceInfo]:
@@ -88,7 +89,7 @@ class _Stream:
 
 class OpenMuseSource(Source):
     name = "openmuse"
-    version = "1.0.0"
+    version = "1.1.0"            # 1.1: EEG centred on zero (µV = (raw14 - 8192) * 1450/16383)
     summary = "Muse S Athena over Bluetooth LE (OpenMuse)"
     requires = ["OpenMuse", "bleak"]
     install_hint = "OpenMuse is a core dependency: run `uv sync`"
@@ -182,7 +183,9 @@ class OpenMuseSource(Source):
         eeg_tag = next((t for t in self._seen if t in EEG_TAGS.values()), EEG_TAGS[n_eeg])
         n_eeg = SENSORS[eeg_tag]["n_channels"]
         names = [c.removeprefix("EEG_") for c in select_eeg_channels(n_eeg)]
-        meta = {"preset": self.config.preset, "scale_uv_per_lsb": EEG_SCALE, "raw_dtype": "uint14"}
+        meta = {"preset": self.config.preset, "raw_dtype": "uint14", "scale_uv_per_lsb": EEG_SCALE,
+                "offset_uv": -EEG_MIDPOINT_UV, "conversion": "uV = (raw14 - 8192) * 1450/16383",
+                "range_uv": [-EEG_MIDPOINT_UV, 8191 * EEG_SCALE]}
         streams = [StreamInfo("eeg", "eeg", names, ["uV"] * n_eeg, 256.0,
                               positions={c: MUSE_POSITIONS[c] for c in names if c in MUSE_POSITIONS}, meta=meta)]
         opt_tag = next((t for t in self._seen if t in OPTICS_TAGS.values()), OPTICS_TAGS.get(n_opt))
@@ -248,8 +251,10 @@ class OpenMuseSource(Source):
                 if cfg["type"] == "ACCGYRO":
                     self._emit("acc", data[:, :3], t, st.index)
                     self._emit("gyro", data[:, 3:6], t, st.index)
+                elif cfg["type"] == "EEG":
+                    self._emit("eeg", data - EEG_MIDPOINT_UV, t, st.index)
                 else:
-                    self._emit("eeg" if cfg["type"] == "EEG" else "optics", data, t, st.index)
+                    self._emit("optics", data, t, st.index)
                 st.index += data.shape[0]
 
     def _emit(self, stream: str, data: np.ndarray, t: np.ndarray, index: int) -> None:

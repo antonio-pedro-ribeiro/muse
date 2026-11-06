@@ -165,3 +165,23 @@ def test_openmuse_handles_settle_backlog_before_new_packets(monkeypatch):
     cb(None, bytearray([4]))
     assert [c.first_index for c in ctx.chunks["eeg"]] == [0, 2, 4, 6, 8]
     assert src.health().counters["lost_subpackets_0x12"] == 0
+
+
+def test_openmuse_eeg_is_centred_on_zero(monkeypatch):
+    """OpenMuse gives raw14 * 1450/16383 (0..1450 µV); the source removes the 14-bit midpoint."""
+    import OpenMuse
+    from OpenMuse.decode import EEG_SCALE as OPENMUSE_SCALE
+
+    from muse_monitor.plugins.openmuse import EEG_SCALE, OpenMuseSource
+    assert EEG_SCALE == OPENMUSE_SCALE
+    raw14 = np.array([[8192] * 8, [8192 + 100] * 8, [0] * 8])
+    monkeypatch.setattr(OpenMuse, "parse_message", lambda line: {
+        "EEG": [{"tag_byte": 0x12, "subpkt_index": 0, "data": raw14 * OPENMUSE_SCALE}]})
+    ctx = CaptureContext("live")
+    src = OpenMuseSource(OpenMuseSource.Config(), ctx)
+    src._declared = {s.id: s for s in src._declare()}
+    src._live = True
+    src._make_callback("273e0013")(None, bytearray([0]))
+    x = ctx.stacked("eeg")
+    assert np.allclose(x[:, 0], [0.0, 100 * 1450 / 16383, -725.04], atol=0.01)
+    assert src._declared["eeg"].meta["offset_uv"] == pytest.approx(-725.04, abs=0.01)

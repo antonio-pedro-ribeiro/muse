@@ -435,7 +435,7 @@ class Session:
         timeout = None if self.mode == "offline" else 10.0
         await self._drain(self.analyzers, timeout)
         for rt in self.analyzers:
-            if rt.active:
+            if rt.active and rt.sub is not None:     # set up (the source opened); else there is nothing to sum up
                 assert isinstance(rt.plugin, Analyzer)
                 try:
                     report = await rt.plugin.summarize()

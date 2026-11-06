@@ -108,7 +108,7 @@ and missing samples, followed by each analyzer's report.
 |---|---|
 | `muse sessions list [--since 7d] [--label TEXT] [--mode live\|offline\|all]` | Lists sessions, newest first: start, label, duration, status and gaps. `offline` lists analysis runs. |
 | `muse sessions show ID` | Shows metadata, device, firmware, per-stream statistics and analyzer reports. |
-| `muse sessions export ID --format csv\|edf [--out PATH]` | CSV: one file per stream plus events. EDF+: one file for EEG tools (EDFbrowser, EEGLAB, MNE), with markers and artifacts as annotations. |
+| `muse sessions export ID --format csv\|edf [--out PATH]` | CSV: one file per stream plus events. EDF+: one file for EEG tools (EDFbrowser, EEGLAB, MNE), with markers, artifacts and gaps as annotations. `--out` can be a file or a folder. |
 | `muse sessions repair ID` | Finishes a session that ended in a crash: merges the partial files and marks it stopped. |
 
 Session status:
@@ -119,6 +119,12 @@ Session status:
 | `stopped` | The session ended normally. |
 | `failed` | The session ended because of an error. |
 | `incomplete` | The app quit while recording. The data written so far (all but the last few seconds) is readable. Run `repair` to tidy the files. |
+
+**About EDF+ files.** EDF stores every channel at an exact, fixed rate, but the headband's clocks run slightly
+off (EEG at about 256.7 Hz instead of 256). The export therefore places each sample at its real time on the
+fixed grid, so markers stay aligned with the signal even in long sessions. Gaps are filled with zeros and marked
+with a `gap` annotation. Your raw recording is unchanged. MNE opens every channel as EEG; set the others
+yourself, for example `raw.set_channel_types({"ACC x": "misc"})`.
 
 ### Offline analysis: `muse analyze`
 
@@ -318,7 +324,7 @@ signal. Those numbers mean nothing to read directly. To get something useful you
 | Path | Contents |
 |---|---|
 | `recordings/<ID>/session.json` | Metadata: device, firmware, preset, channels, rates, pipeline, statistics |
-| `recordings/<ID>/raw/*.parquet` | Raw samples per stream (EEG in µV), never modified |
+| `recordings/<ID>/raw/*.parquet` | Raw samples per stream (EEG in µV, centred on zero), never modified. Recordings made before 2026-11-06 store EEG with a +725 µV offset; filtering and band power are unaffected |
 | `recordings/<ID>/events.jsonl` | Markers, calibration, gaps, plugin events |
 | `recordings/<ID>/derived/` | Analyzer results from the latest offline analysis |
 | `recordings/<ID>/reports/` | HTML reports |

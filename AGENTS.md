@@ -80,7 +80,7 @@ These come from the OpenMuse and muse-rs projects, which reverse-engineered the 
 | Radio | BLE 5.3, 2.4 GHz |
 | EEG | TP9, AF7, AF8, TP10 (+ FPz reference/DRL, + aux). 4-ch or 8-ch mode depending on preset. **256 Hz**, 14-bit |
 | EEG channel order (8-ch) | TP9, AF7, AF8, TP10, FPz, AUX_R, AUX_L, AUX |
-| EEG scaling (Athena) | `µV = (raw14 − 8192) × 0.0885` |
+| EEG scaling (Athena) | `µV = (raw14 − 8192) × 1450/16383` (≈ 0.0885 µV/LSB, range ±725 µV). OpenMuse returns `raw14 × 1450/16383` (0–1450 µV); the `openmuse` source (v1.1+) subtracts the midpoint. Recordings made with v1.0 carry a +725 µV offset (no `offset_uv` in the EEG stream meta) |
 | Optics (fNIRS + PPG) | 5-optode bilateral frontal; wavelengths IR 850 nm, near-IR 730 nm, red 660 nm (+ ambient). 4/8/16 channels by preset. **64 Hz**, 20-bit |
 | Accelerometer | 3-axis, **52 Hz**, 16-bit, ±2 g (0.0000610352 g/LSB) |
 | Gyroscope | 3-axis, **52 Hz**, 16-bit, ±250 dps (−0.0074768 °/s/LSB, sign flipped compared with classic Muse) |

@@ -160,3 +160,33 @@ def test_unexpected_rate_is_measured_not_turned_into_gaps():
     assert 14 <= streams["acc"].rate <= 18
     idx = [(c.first_index, c.n) for c in ctx.chunks["acc"]]
     assert all(b == a + n for (a, n), (b, _) in zip(idx, idx[1:]))     # no invented gaps
+
+
+@pytest.mark.parametrize("channels, midpoint, kind", [(8, 725.044, "Athena"), (4, 841.4075, "classic")])
+def test_eeg_is_centred_automatically(channels, midpoint, kind):
+    """Mind Monitor sends Athena EEG on OpenMuse's 0-1450 µV scale (seen in a real session), classic Muse 0-1682.8."""
+    port = free_port()
+    ctx = CaptureContext("live")
+    src = MindMonitor(MindMonitor.Config(host="127.0.0.1", port=port, settle_s=0.5, wait_s=5), ctx)
+
+    async def send():
+        from pythonosc.udp_client import SimpleUDPClient
+        client, loop = SimpleUDPClient("127.0.0.1", port), asyncio.get_running_loop()
+        start = loop.time()
+        for k in range(24):
+            await asyncio.sleep(max(0.0, start + k / 16 - loop.time()))
+            for _ in range(16):
+                client.send_message("/muse/eeg", [midpoint + 5.0] * channels)
+
+    async def go():
+        sender = asyncio.create_task(send())
+        streams = {s.id: s for s in await src.open()}
+        runner = asyncio.create_task(src.run())
+        await sender
+        await asyncio.sleep(0.2)
+        await src.stop()
+        await runner
+        return streams
+    eeg = asyncio.run(go())["eeg"]
+    assert kind in eeg.meta["offset_source"] and eeg.meta["offset_uv"] == pytest.approx(-midpoint, abs=1e-3)
+    assert np.allclose(ctx.stacked("eeg"), 5.0, atol=1e-3)                      # OSC sends 32-bit floats

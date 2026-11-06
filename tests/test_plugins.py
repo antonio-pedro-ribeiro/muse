@@ -11,7 +11,7 @@ from muse_monitor.plugins.bandpower import BandPower
 from muse_monitor.plugins.baseline import Baseline
 from muse_monitor.plugins.filter import Filter
 from muse_monitor.plugins.quality import Quality
-from muse_monitor.sdk import MASK_FLAT, MASK_OK, Analyzer, Chunk, Event, StreamInfo, StreamSelector, ViewSpec, Windower
+from muse_monitor.sdk import MASK_FLAT, MASK_NOISY, MASK_OK, MASK_POOR_CONTACT, Analyzer, Chunk, Event, StreamInfo, StreamSelector, ViewSpec, Windower
 from muse_monitor.sdk.testing import check_plugin, run_analyzer, run_pipeline, synthetic
 
 from .conftest import CaptureContext, sine_chunks
@@ -207,3 +207,48 @@ def test_quality_usable_ignores_aux_and_mask_carries_positions():
     assert ctx.stacked("usable")[-1, 0] == 1.0
     views = {v.id: v for v in q.views()}
     assert views["electrodes"].type == "electrodes" and views["electrodes"].section == "quality"
+
+
+def hum_chunks(hum_uv: float, eeg_uv: float = 10.0, seconds: float = 4, rails: bool = False):
+    """4 channels of 10 Hz EEG plus 50 Hz mains hum (hum_uv peak); optionally channel 0 swinging rail to rail."""
+    rate, n = 256.0, int(seconds * 256)
+    t = np.arange(n) / rate
+    x = (eeg_uv * np.sin(2 * np.pi * 10 * t) + hum_uv * np.sin(2 * np.pi * 50 * t))[:, None].repeat(4, axis=1)
+    x += np.random.default_rng(0).normal(0, 2.0, x.shape)
+    if rails:
+        x[:, 0] = np.where(np.sin(2 * np.pi * 3 * t) > 0, 725.0, -725.0)
+    return [Chunk("eeg", x[a:a + 32], 1e9 + t[a:a + 32], a) for a in range(0, n, 32)]
+
+
+def run_quality(chunks):
+    ctx = CaptureContext()
+    q = Quality(Quality.Config(), ctx)
+    q.setup({"eeg": StreamInfo("eeg", "eeg", ["TP9", "AF7", "AF8", "TP10"], ["uV"] * 4, 256.0)})
+
+    async def go():
+        for c in chunks:
+            await q.process(c, False)
+    asyncio.run(go())
+    return ctx.stacked("mask")[-1].tolist(), ctx.stacked("std")[-1]
+
+
+def test_quality_tolerates_ordinary_mains_hum_but_not_extreme_hum_or_rails():
+    """Seen with Mind Monitor: forehead EEG with 50 Hz hum far above the EEG band was all marked noisy."""
+    mask, std = run_quality(hum_chunks(hum_uv=120.0))           # hum 85 µV rms, 30x the EEG band power
+    assert mask == [MASK_OK] * 4 and 6 < std[1] < 10              # std is the EEG band only (10 µV sine ~ 7 rms)
+    assert run_quality(hum_chunks(hum_uv=225.0))[0] == [MASK_NOISY] * 4      # 159 µV rms: too much to trust
+    assert run_quality(hum_chunks(hum_uv=400.0))[0] == [MASK_POOR_CONTACT] * 4   # 800 µV swings: contact
+    assert run_quality(hum_chunks(hum_uv=60.0, rails=True))[0] == [MASK_POOR_CONTACT] + [MASK_OK] * 3
+
+
+def test_artifacts_ignore_mains_hum():
+    ctx = CaptureContext()
+    a = Artifacts(Artifacts.Config(), ctx)
+    a.setup({"eeg": StreamInfo("eeg", "eeg", ["TP9", "AF7", "AF8", "TP10"], ["uV"] * 4, 256.0)})
+
+    async def go():
+        for c in hum_chunks(hum_uv=150.0, seconds=10):            # 300 µV peak-to-peak of pure hum
+            await a.process(c, False)
+        await a.summarize()
+    asyncio.run(go())
+    assert not [e for e in ctx.events if e.type in ("artifact.blink", "artifact.jaw")]

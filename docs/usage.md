@@ -48,7 +48,7 @@ computer instead of the app connecting over Bluetooth itself.
 3. Allow UDP port 5000 through the Windows firewall, for example from an administrator terminal:
    `netsh advfirewall firewall add rule name="muse-monitor OSC" dir=in action=allow protocol=UDP localport=5000`
 4. Start streaming in Mind Monitor, then check with `muse devices --source mindmonitor`.
-5. Record with `muse run --source mindmonitor -o eeg_offset_uv=800`, or pick **mindmonitor** as the
+5. Record with `muse run --source mindmonitor`, or pick **Via Mind Monitor** as the
    source on the web **Live** page.
 
 Things to know:
@@ -56,8 +56,10 @@ Things to know:
 - **Timing is reconstructed.** OSC messages carry no packet counter or device timestamp, so sample times
   are rebuilt from the sample rate and arrival times, and lost samples are only *inferred* (a loss
   shorter than about half a second can go unnoticed). The direct Bluetooth link is more exact.
-- **EEG offset.** Mind Monitor's raw EEG is not centred on zero. `eeg_offset_uv` subtracts a midpoint
-  (about 800 µV for classic Muse headbands); filtering and band power are unaffected either way.
+- **EEG offset.** Mind Monitor's raw EEG is not centred on zero, so the source subtracts the midpoint
+  automatically: 725 µV for a Muse S Athena (detected from its optics data or 8 EEG channels), 841 µV for
+  classic Muse headbands. Set `eeg_offset_uv` to override it. Filtering and band power are unaffected
+  either way.
 - **Markers.** Mind Monitor's marker buttons arrive as markers ("Mind Monitor marker 1" … "4").
 - **Port in use.** Only one program can listen on the port; close other OSC receivers first.
 

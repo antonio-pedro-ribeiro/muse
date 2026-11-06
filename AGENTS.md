@@ -52,7 +52,7 @@ uv run muse-check test                    # connect, stream 10 s, report rates/l
 uv run muse-check test --duration 30 --save raw.txt   # also save raw packets (OpenMuse text format)
 uv run OpenMuse stream --address <MAC>    # publish LSL streams
 uv run muse run --calibrate --duration 10m   # live session: dashboard + recording
-uv run muse run --source mindmonitor -o eeg_offset_uv=800   # via the Mind Monitor app (OSC, UDP 5000)
+uv run muse run --source mindmonitor   # via the Mind Monitor app (OSC, UDP 5000)
 uv sync --extra models && uv run muse models pull cbramod   # model weights (M5)
 uv run muse train-probe ID ID ID --label-from calibration   # probe vs band power
 uv run muse sessions export ID ID --format session --out backup.zip   # archive; `sessions import` reads it

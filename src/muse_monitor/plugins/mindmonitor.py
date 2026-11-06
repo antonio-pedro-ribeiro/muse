@@ -8,7 +8,8 @@ OSC carries one sample per message with no packet counter or device timestamp, s
   network jitter and follows clock drift);
 - lost samples can only be inferred from timing: when data keeps arriving later than the rate allows for longer
   than `gap_confirm_s`, the shortfall is recorded as a gap. Short losses (< `gap_tolerance_s`) go unnoticed.
-Mind Monitor's raw EEG is in µV but not centred on zero; `eeg_offset_uv` can remove the midpoint."""
+Mind Monitor's raw EEG is in µV but not centred on zero; the source subtracts the converter midpoint: 725 µV for
+a Muse S Athena (0-1450 µV, like OpenMuse), 841 µV for classic Muse headbands (0-1682.8 µV), or `eeg_offset_uv`."""
 
 from __future__ import annotations
 
@@ -26,6 +27,8 @@ from muse_monitor.sdk import (MUSE_POSITIONS, Chunk, DeviceInfo, DeviceNotFound,
                               SourceDisconnected, StreamInfo)
 
 EEG_NAMES = ["TP9", "AF7", "AF8", "TP10"]
+ATHENA_MIDPOINT_UV = 8192 * 1450.0 / 16383.0      # 14-bit, 0-1450 µV (same scale OpenMuse returns)
+CLASSIC_MIDPOINT_UV = 1682.815 / 2                 # classic Muse via Mind Monitor: 0-1682.815 µV
 # OSC address (after the prefix) -> stream id, kind, channel names (None: from the first message), units
 STREAMS: dict[str, tuple[str, str, list[str] | None, str]] = {
     "/muse/eeg": ("eeg", "eeg", None, "uV"),
@@ -95,7 +98,7 @@ class _Timeline:
 
 class MindMonitor(Source):
     name = "mindmonitor"
-    version = "1.0.0"
+    version = "1.1.0"            # 1.1: EEG centred automatically (Athena 725 µV, classic Muse 841 µV)
     summary = "Muse via the Mind Monitor phone app (OSC over UDP)"
     requires = ["pythonosc"]
 
@@ -107,8 +110,9 @@ class MindMonitor(Source):
         eeg_rate: float = Field(256.0, description="EEG samples per second sent by Mind Monitor.")
         acc_rate: float = Field(52.0, description="Accelerometer and gyroscope samples per second.")
         ppg_rate: float = Field(64.0, description="PPG / optics samples per second.")
-        eeg_offset_uv: float = Field(0.0, description="Subtracted from every EEG value. Mind Monitor's raw EEG is "
-                                                      "not centred on zero (classic Muse: about 800 µV).")
+        eeg_offset_uv: float | None = Field(None, description="Subtracted from every EEG value to centre it on "
+                                                             "zero. Empty: automatic (725 µV for a Muse S Athena, "
+                                                             "841 µV for classic Muse headbands).")
         wait_s: float = Field(30.0, description="Seconds to wait for the first EEG message before giving up.")
         settle_s: float = Field(2.0, description="Seconds to watch which streams arrive before the session starts.")
         silence_s: float = Field(10.0, description="No EEG for this long counts as a disconnect.")
@@ -146,6 +150,7 @@ class MindMonitor(Source):
         self._battery: float | None = None
         self._messages = 0
         self._bad = 0
+        self._eeg_offset = 0.0
 
     # -- receiving --------------------------------------------------------------------------------
     async def _listen(self) -> None:
@@ -175,7 +180,6 @@ class MindMonitor(Source):
                 values = [float(a) for a in args]
                 if address == "/muse/eeg":
                     self._last_eeg = arrival
-                    values = [v - self.config.eeg_offset_uv for v in values]
                 self._buffers.setdefault(address, []).append((arrival, values))
             elif address == "/muse/batt" and args:
                 level = float(args[0])
@@ -232,7 +236,13 @@ class MindMonitor(Source):
                                     "gaps": "inferred from timing (no packet counter)" if infer else "not inferred",
                                     "measured_rate": round(measured, 2) if measured else None}
             if sid == "eeg":
-                meta["offset_uv"] = -c.eeg_offset_uv
+                athena = bool(self._buffers.get("/muse/optics")) or n > 4
+                if c.eeg_offset_uv is not None:
+                    self._eeg_offset, how = c.eeg_offset_uv, "configured"
+                else:
+                    self._eeg_offset = ATHENA_MIDPOINT_UV if athena else CLASSIC_MIDPOINT_UV
+                    how = "auto: Muse S Athena (optics or 8 EEG channels)" if athena else "auto: classic Muse"
+                meta.update(offset_uv=-self._eeg_offset, offset_source=how)
             out.append(StreamInfo(sid, kind, list(names), [unit] * len(names), rate, meta=meta,
                                   positions={ch: MUSE_POSITIONS[ch] for ch in names if ch in MUSE_POSITIONS}
                                   if sid == "eeg" else None))
@@ -253,7 +263,10 @@ class MindMonitor(Source):
             if not good:
                 continue
             first, t = self._timelines[address].place(len(good), rows[-1][0])
-            self.ctx.emit(Chunk(sid, np.asarray(good, dtype=np.float64), t, first))
+            data = np.asarray(good, dtype=np.float64)
+            if sid == "eeg":
+                data -= self._eeg_offset
+            self.ctx.emit(Chunk(sid, data, t, first))
 
     async def run(self) -> None:
         c = self.config

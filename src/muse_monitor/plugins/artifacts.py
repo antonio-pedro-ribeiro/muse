@@ -11,7 +11,7 @@ from muse_monitor.sdk import (Aligner, Analyzer, Chunk, Event, IncompatibleInput
 
 class Artifacts(Analyzer):
     name = "artifacts"
-    version = "1.0.0"
+    version = "1.1.0"            # 1.1: blinks judged below 12 Hz, jaw noise excludes mains hum
     summary = "Blink / jaw clench (EEG amplitude) and motion (IMU) -> artifact.* events"
     inputs = [StreamSelector(kind="eeg"), StreamSelector(kind="acc", optional=True)]
 
@@ -23,6 +23,8 @@ class Artifacts(Analyzer):
         blink_uv: float = Field(150.0, description="Forehead swing (µV, peak-to-peak) that counts as a blink.")
         jaw_uv: float = Field(15.0, description="High-frequency muscle noise (µV above 30 Hz) that counts as jaw "
                                                 "clenching.")
+        line_hz: float = Field(50.0, description="Mains frequency, left out of the jaw-noise measure: 50 Hz in "
+                                                 "Europe, 60 Hz in the Americas.")
         motion_g: float = Field(0.05, description="Accelerometer variation (g) that counts as head movement.")
         merge_s: float = Field(0.5, description="Detections closer than this (seconds) merge into one event.")
 
@@ -58,14 +60,17 @@ class Artifacts(Analyzer):
     def _detect(self, x: np.ndarray, t0: float, t1: float) -> None:
         c = self.config
         x = x - x.mean(axis=0)
-        if self.front:
-            ptp = float(np.ptp(x[:, self.front], axis=0).max())
+        spec = np.fft.rfft(x, axis=0)
+        f = np.fft.rfftfreq(x.shape[0], 1.0 / self.src.rate)
+        if self.front:                                   # blinks are slow (< 12 Hz): mains hum must not count
+            slow = np.fft.irfft(np.where((f <= 12.0)[:, None], spec, 0), n=x.shape[0], axis=0)
+            ptp = float(np.ptp(slow[:, self.front], axis=0).max())
             if ptp > c.blink_uv:
                 self._hit("artifact.blink", t0, t1, ptp)
         if self.chans and self.src.rate > 64:
-            spec = np.fft.rfft(x[:, self.chans], axis=0)
-            f = np.fft.rfftfreq(x.shape[0], 1.0 / self.src.rate)
-            hf = (f >= 30) & (f <= min(100.0, self.src.rate / 2 - 1))
+            spec = spec[:, self.chans]
+            mains = (np.abs(f - c.line_hz) <= 2) | (np.abs(f - 2 * c.line_hz) <= 2)
+            hf = (f >= 30) & (f <= min(100.0, self.src.rate / 2 - 1)) & ~mains
             rms = float(np.sqrt(2 * (np.abs(spec[hf]) ** 2).sum(axis=0) / x.shape[0] ** 2).mean())
             if rms > c.jaw_uv:
                 self._hit("artifact.jaw", t0, t1, rms)

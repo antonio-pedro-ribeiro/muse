@@ -12,7 +12,8 @@ from muse_monitor.sdk import (MASK_FLAT, MASK_LABELS, MASK_NOISY, MASK_OK, MASK_
 
 class Quality(Analyzer):
     name = "quality"
-    version = "1.1.0"            # 1.1: "usable" counts head electrodes only (not AUX inputs)
+    version = "1.2.0"            # 1.1: "usable" counts head electrodes only. 1.2: noise judged in the EEG band
+                                 # (mains hum removed); hum alone makes a channel noisy only when extreme
     summary = "Per-channel contact/noise check (std, drift, line noise) -> quality/mask"
     inputs = [StreamSelector(kind="eeg")]
 
@@ -20,11 +21,13 @@ class Quality(Analyzer):
         window_s: float = Field(2.0, description="Seconds of signal judged at a time.")
         step_s: float = Field(1.0, description="How often the quality is updated (seconds).")
         flat_uv: float = Field(1.0, description="Variation below this (µV) counts as flat: usually no skin contact.")
-        noisy_uv: float = Field(100.0, description="Variation above this (µV) counts as noisy.")
+        noisy_uv: float = Field(100.0, description="Variation in the EEG band (1-40 Hz, µV) above this counts as "
+                                                   "noisy: movement, muscle tension or a loose band.")
         drift_uv: float = Field(500.0, description="Peak-to-peak swing above this (µV) counts as poor contact.")
         line_hz: float = Field(50.0, description="Mains frequency: 50 Hz in Europe, 60 Hz in the Americas.")
-        line_ratio: float = Field(0.5, description="Mains hum share of the 1-40 Hz power above which a channel "
-                                                   "counts as noisy.")
+        line_uv: float = Field(150.0, description="Mains hum (µV rms at line_hz) above which a channel counts as "
+                                                  "noisy. Smaller hum is common near chargers and lamps, is filtered "
+                                                  "out and does not affect band power.")
 
     def setup(self, inputs: dict[str, StreamInfo]) -> list[StreamInfo]:
         if len(inputs) != 1:
@@ -44,16 +47,16 @@ class Quality(Analyzer):
     def classify(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         c = self.config
         x = x - x.mean(axis=0)
-        std = x.std(axis=0)
-        ptp = np.ptp(x, axis=0)
-        spec = np.abs(np.fft.rfft(x, axis=0)) ** 2
-        f = np.fft.rfftfreq(x.shape[0], 1.0 / self.src.rate)
-        line = spec[(f >= c.line_hz - 1) & (f <= c.line_hz + 1)].sum(axis=0)
-        band = spec[(f >= 1) & (f <= 40)].sum(axis=0) + 1e-12
+        n = x.shape[0]
+        power = np.abs(np.fft.rfft(x, axis=0)) ** 2
+        f = np.fft.rfftfreq(n, 1.0 / self.src.rate)
+        rms = lambda sel: np.sqrt(2 * power[sel].sum(axis=0)) / n          # noqa: E731  (Parseval)
+        std = rms((f >= 1) & (f <= 40))                                      # EEG band: drift and mains removed
+        hum = rms(np.abs(f - c.line_hz) <= 1.5)
         mask = np.full(x.shape[1], MASK_OK)
-        mask[ptp > c.drift_uv] = MASK_POOR_CONTACT
-        mask[(std > c.noisy_uv) | (line / band > c.line_ratio)] = MASK_NOISY
-        mask[std < c.flat_uv] = MASK_FLAT
+        mask[(std > c.noisy_uv) | (hum > c.line_uv)] = MASK_NOISY
+        mask[np.ptp(x, axis=0) > c.drift_uv] = MASK_POOR_CONTACT            # swings to the rails: no contact
+        mask[x.std(axis=0) < c.flat_uv] = MASK_FLAT
         return mask, std
 
     async def process(self, chunk: Chunk, gap: bool) -> None:
@@ -77,8 +80,9 @@ class Quality(Analyzer):
                                  "noisy, often movement or tension. Empty red ring: poor contact. Dashed grey: no "
                                  "signal. The line below says what to adjust."),
             ViewSpec(id="std", title="Signal variation per electrode", section="signal", type="bars", streams=["std"],
-                     description="How much each electrode's signal varies (standard deviation over the last "
-                                 f"{c.window_s:g} s). Green is a normal range. Near zero means a flat signal, usually "
+                     description="How much each electrode's signal varies in the EEG band (1-40 Hz, standard "
+                                 f"deviation over the last {c.window_s:g} s, mains hum removed). Green is a normal "
+                                 "range. Near zero means a flat signal, usually "
                                  "no skin contact; very high values mean noise, often movement or a loose band. "
                                  "Moisten the sensors or adjust the band if a channel stays red.",
                      y=Axis(label="std", unit="µV", min=0, max=c.noisy_uv * 1.5),

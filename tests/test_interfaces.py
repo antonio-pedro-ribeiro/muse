@@ -83,6 +83,46 @@ def _token(client: TestClient) -> None:
     assert r.json()["title"] == "NotFound"
 
 
+def test_cross_origin_writes_and_websockets_are_refused(data_dir: Path):
+    """Without a token, a page on another site must not drive the local server through the user's browser."""
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+    with TestClient(create_app(KernelFacade(data_dir))) as client:
+        evil = {"Origin": "http://evil.example"}
+        r = client.post("/api/v1/sessions/NOPE/stop", headers=evil)
+        assert r.status_code == 403 and r.json()["detail"] == "cross-origin request refused"
+        assert client.post("/api/v1/sessions/NOPE/stop", headers={"Origin": "null"}).status_code == 403
+        assert client.post("/api/v1/sessions/NOPE/stop", headers={"Origin": "http://testserver"}).status_code == 404
+        assert client.post("/api/v1/sessions/NOPE/stop").status_code == 404          # CLI / scripts: no Origin
+        assert client.get("/api/v1/plugins", headers=evil).status_code == 200         # reads: the browser blocks them
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/api/v1/sessions/current/live", headers=evil) as ws:
+                ws.receive_text()
+        assert exc.value.code == 4403
+
+
+def test_probe_api_cannot_write_or_read_server_paths(data_dir: Path, tmp_path: Path):
+    import pytest
+
+    from muse_monitor.kernel import ConfigError
+    f = KernelFacade(data_dir)
+    with TestClient(create_app(f)) as client:
+        target = tmp_path / "pwned.npz"
+        r = client.post("/api/v1/probes", json={"sessions": ["X"], "out": str(target)})
+        assert r.status_code == 422 and "`out` is not accepted" in r.json()["detail"]
+        for options in ({"weights": str(tmp_path)}, {"weights": "../../etc"}, {"revision": ".."},
+                        {"head": str(target)}):
+            assert client.post("/api/v1/probes", json={"sessions": ["X"], "options": options}).status_code == 422
+        assert client.post("/api/v1/probes", json={"sessions": ["X"], "name": "../x"}).status_code == 422
+        assert client.post("/api/v1/models/cbramod/pull", params={"revision": "../.."}).status_code == 422
+        assert client.get("/api/v1/probes/nothing").status_code == 404
+        assert client.get("/api/v1/probes/..%2Fsession").status_code in (404, 422)
+        assert not target.exists()
+    assert f.probe_path("head", must_exist=False) == f.data_dir / ".muse" / "probes" / "head.npz"
+    with pytest.raises(ConfigError):
+        f.probe_path("../../x", must_exist=False)
+
+
 def test_loopback_detection():
     assert is_loopback("127.0.0.1") and is_loopback("localhost") and not is_loopback("0.0.0.0")
 

@@ -309,8 +309,27 @@ Muse Monitor is a remarkably cohesive, well-engineered Python 3.13 application. 
    - Disconnect any old `BleakClient` before re-creating it, use `time.monotonic()` for outage measurement, and advance `st.index` *before* starting notifications on reconnect.
    - Preserve the last offset anchor in `MindMonitor._Timeline` across outages `> 60 s` so long disconnects still advance `self.index`.
 
+> **Status (2026-11-06):** Priorities 1 and 2 are implemented, with tests: `test_band_shares_sum_to_one`,
+> `test_probe_verdict_is_the_rule_describe_applies`, `test_window_usable_averages_quality_inside_each_window`,
+> `test_probe_api_cannot_write_or_read_server_paths`, `test_cross_origin_writes_and_websockets_are_refused`,
+> `test_openmuse_reconnect_skips_exactly_the_outage` and
+> `test_outage_longer_than_the_offset_window_still_advances_the_index`. Plugin versions were bumped: `bandpower`
+> 1.1.0, `cbramod` 1.1.0, `openmuse` 1.2.0, `mindmonitor` 1.2.0. Band shares in analyses made before the fix
+> sum to less than 100% (for white noise, 39/43 ≈ 91%); re-run `muse analyze` to update them.
+
 ### Priority 3 — Lifecycle & Developer Experience
 7. **Seed `baseline` on offline runs & release `Job.session` after completion (`kernel/facade.py`):** Emit `baseline.ready` at the start of `run_offline` when `parent.baseline` exists in `session.json`, and clear `job.session = None` once `_run_job` finishes to free `Snapshot` memory.
 8. **Enforce analyzer topological order (`kernel/session.py`):** Sort analyzers by stream dependencies (or warn when an `optional=True` selector matches a stream declared by a later analyzer in the pipeline).
 9. **Add `[tool.ruff]` and `[tool.pyright]` to `pyproject.toml` and a GitHub Actions workflow.**
+
+> **Status (2026-11-06):** Priority 3 is implemented.
+> - **7.** `run_offline` sends the recording's baseline as `baseline.ready` before the first replayed chunk.
+>   `Job.session` is released when a job ends, and at most 100 jobs are kept.
+> - **8.** Analyzers declare the kinds they produce (`Analyzer.produces`) and are set up in a stable
+>   topological order. Mutual dependencies keep pipeline order and are logged. An optional input that misses a
+>   later stream is logged.
+> - **9.** Ruff (`E, F, W, B, UP`) and pyright (standard mode, `kernel/` + `sdk/`) are configured, with CI in
+>   `.github/workflows/ci.yml`. Pyright strict mode is not enabled yet.
+>
+> The kernel is now about 1,580 lines, over its 1,500-line target.
 

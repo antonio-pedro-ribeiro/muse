@@ -116,10 +116,13 @@ def welch_psd(data: np.ndarray, rate: float, segment_s: float = 1.0) -> tuple[np
 
 
 def band_powers(freqs: np.ndarray, psd: np.ndarray, bands: dict[str, tuple[float, float]]) -> np.ndarray:
-    """Absolute band power (integrated PSD), shape (bands, channels)."""
+    """Absolute band power (integrated PSD), shape (bands, channels).
+
+    Both edges are included, so adjacent bands share their boundary bin: piecewise trapezoids over [a, b] and
+    [b, c] then add up to the integral over [a, c], and relative powers of contiguous bands sum to 1."""
     out = []
     for lo, hi in bands.values():
-        m = (freqs >= lo) & (freqs < hi)
+        m = (freqs >= lo) & (freqs <= hi)
         out.append(np.trapezoid(psd[m], freqs[m], axis=0) if m.sum() > 1 else np.full(psd.shape[1], np.nan))
     return np.array(out)
 

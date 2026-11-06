@@ -99,14 +99,14 @@ Update the M5 row in [spec/roadmap.md](../spec/roadmap.md) with:
 
 Don't commit the recordings: they're personal data and `recordings/` is excluded from git.
 
-## Optional improvements before recording
+## Improvements made before recording (2026-11-06)
 
-Two small changes would make the comparison fairer. They're **not implemented yet**:
+Both changes that make the comparison fairer are now in place:
 
-1. **Skip bad-signal windows in `train-probe`.** It currently uses every labelled window, including
-   ones with poor contact, which adds noise and can hide a real difference.
-2. **Make the verdict stricter in the tool**: report how many held-out sessions each method wins, and
-   apply the 0.05 margin from step 5 automatically.
+1. **`train-probe` skips bad-signal windows**: windows where fewer than `--min-usable` (default
+   0.5) of the electrodes had good contact are left out, and their count is reported.
+2. **The verdict is strict in the tool**: it counts the held-out sessions the probe wins and applies
+   the 0.05 margin from step 5 automatically, using the same rule as `describe`.
 
 ## While you're recording
 

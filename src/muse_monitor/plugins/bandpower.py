@@ -11,9 +11,10 @@ from muse_monitor.sdk import (DEFAULT_BANDS, Analyzer, Axis, Chunk, Event, Incom
 
 class BandPower(Analyzer):
     name = "bandpower"
-    version = "1.0.0"
+    version = "1.1.0"            # 1.1: band edges included, so the band shares sum to 1 (1.0 lost 1 Hz per band)
     summary = "Welch PSD -> absolute, relative and baseline-normalised band powers"
     inputs = [StreamSelector(kind="eeg"), StreamSelector(kind="mask", optional=True)]
+    produces = ["derived"]
     requires = ["scipy"]
 
     class Config(BaseModel):

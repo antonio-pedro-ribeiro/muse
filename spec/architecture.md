@@ -48,11 +48,15 @@ nothing about Muse.
 - **PluginRegistry** discovers plugins (entry points and `./plugins/`), checks `api_version`, and
   imports a plugin's dependencies only when it's used.
 - **StreamBus** is a pub/sub of `Chunk`/`Event` per stream id, with one bounded queue per subscriber.
-- **SessionManager** builds the plugin DAG from config (cycles are rejected) and starts sinks, then
-  analyzers, then the source. It stops them in reverse order. Only **one live session** runs at a time.
+- **SessionManager** builds the plugin DAG from config and starts sinks, then analyzers, then the source. It
+  stops them in reverse order. Analyzers are set up in a stable topological order from what they read
+  (`inputs`) and declare they produce (`produces`). Analyzers that read each other's kinds keep pipeline order
+  and are logged, and an optional input that misses a stream declared later is logged too. Only **one live
+  session** runs at a time.
 - **KernelFacade** is the async API that every interface uses.
 
-The kernel depends only on `numpy` and `pydantic`, with a target of ≤ 1,500 lines of code.
+The kernel depends only on `numpy` and `pydantic`, with a target of ≤ 1,500 lines of code (currently about
+1,580, over the target since the review fixes of 2026-11-06).
 
 ### Runtime
 

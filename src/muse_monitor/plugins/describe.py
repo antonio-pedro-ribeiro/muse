@@ -15,8 +15,8 @@ from typing import Any
 import numpy as np
 from pydantic import BaseModel, Field
 
-from muse_monitor.sdk import (Analyzer, Chunk, Event, IncompatibleInput, Report, StreamInfo, StreamSelector,
-                              ViewSpec)
+from muse_monitor.sdk import (PROBE_MIN_MARGIN, Analyzer, Chunk, Event, IncompatibleInput, Report, StreamInfo,
+                              StreamSelector, ViewSpec, probe_validated)
 
 BAND_NAMES = {"delta": "delta", "theta": "theta", "alpha": "alpha", "beta": "beta", "gamma": "gamma"}
 RHYTHMS = ("theta", "alpha", "beta")          # bands worth interpreting on a headband
@@ -154,7 +154,7 @@ class Describe(Analyzer):
         bandpower: str = Field("bandpower", description="Instance id of the band-power analyzer to read.")
         quality: str = Field("quality", description="Instance id of the quality analyzer to read.")
         model: str = Field("cbramod", description="Instance id of a model analyzer with a probe head (optional).")
-        probe_min_margin: float = Field(0.05, description="A probe is quoted only if its held-out accuracy beat "
+        probe_min_margin: float = Field(PROBE_MIN_MARGIN, description="A probe is quoted only if its held-out accuracy beat "
                                                           "band power by at least this much, in most sessions.")
 
     def setup(self, inputs: dict[str, StreamInfo]) -> list[StreamInfo]:
@@ -172,9 +172,7 @@ class Describe(Analyzer):
             info = inputs[self.probs_id]
             self.probe_labels = list(info.channels)
             v = info.meta.get("validation") or {}
-            ok = (str(v.get("scheme", "")).startswith("session")
-                  and (v.get("model_mean") or 0) - (v.get("baseline_mean") or 0) >= c.probe_min_margin
-                  and v.get("folds", 0) > 0 and v.get("model_fold_wins", 0) * 2 > v["folds"])
+            ok = probe_validated(v, c.probe_min_margin)
             self.validation = v if ok else None
             if not ok:
                 self.probe_note = ("The probe was not used in these descriptions: on held-out sessions it did not "

@@ -70,6 +70,19 @@ class _Stream:
         self.lost_subpackets = 0
         self.subpackets = 0
         self.clock = _Clock(rate) if rate > 0 else None
+        self.last_mono: float | None = None    # monotonic arrival of the latest subpacket
+        self.resume = False                    # set on reconnect: the next subpacket accounts for the outage
+        self.outage_missing = 0                # samples skipped over reconnect outages
+
+    def resume_index(self, mono: float, count: int) -> None:
+        """First subpacket after a reconnect: skip the samples the device produced while the link was down,
+        measured from the last subpacket before the outage to this one (both on the monotonic clock)."""
+        if self.resume and self.clock is not None and self.last_mono is not None:
+            missing = max(0, round((mono - self.last_mono) * self.clock.rate) - count)
+            self.index += missing
+            self.outage_missing += missing
+        self.resume = False
+        self.last_mono = mono
 
     def advance(self, sub_idx: int | None) -> int:
         """Updates the sequence and returns how many samples were lost before this subpacket."""
@@ -89,7 +102,8 @@ class _Stream:
 
 class OpenMuseSource(Source):
     name = "openmuse"
-    version = "1.1.0"            # 1.1: EEG centred on zero (µV = (raw14 - 8192) * 1450/16383)
+    version = "1.2.0"            # 1.1: EEG centred on zero (µV = (raw14 - 8192) * 1450/16383)
+                                 # 1.2: reconnect outage measured to the first new packet (monotonic clock)
     summary = "Muse S Athena over Bluetooth LE (OpenMuse)"
     requires = ["OpenMuse", "bleak"]
     install_hint = "OpenMuse is a core dependency: run `uv sync`"
@@ -115,14 +129,14 @@ class OpenMuseSource(Source):
         self._disconnected = asyncio.Event()
         self._states: dict[int, _Stream] = {}
         self._declared: dict[str, StreamInfo] | None = None
-        self._pending: list[tuple[dict[str, list[dict]], float]] = []
+        self._pending: list[tuple[dict[str, list[dict]], float, float]] = []     # (parsed, arrival, monotonic)
         self._live = False             # False: queue packets in _pending until run() has drained them in order
         self._seen: set[int] = set()
         self._control = ""
         self._errors = 0
         self._mismatched = 0
         self._battery: float | None = None
-        self._last_disconnect: float | None = None
+        self._gen = 0                  # bumped per BLE client: callbacks from an earlier client are ignored
 
     # -- connection ---------------------------------------------------------------------------------
     async def open(self) -> list[StreamInfo]:
@@ -136,12 +150,18 @@ class OpenMuseSource(Source):
                 raise DeviceNotFound("no Muse found; is it on and not connected to the phone app?")
             address, name = found[0].id, found[0].name
         loop = asyncio.get_running_loop()
+        old, self._client = self._client, None
+        if old is not None:                            # reconnect: release the lost client first
+            await self._release(old)
+        self._gen += 1
+        gen = self._gen
         self._stop.clear()
         self._disconnected.clear()
         self._live = False
+        self._pending.clear()                          # leftovers of a failed attempt belong to no stream position
         self._client = bleak.BleakClient(
             address, timeout=cfg.connect_timeout,
-            disconnected_callback=lambda _c: loop.call_soon_threadsafe(self._disconnected.set))
+            disconnected_callback=lambda _c: loop.call_soon_threadsafe(self._on_disconnect, gen))
         try:
             await self._client.connect()
         except Exception as exc:
@@ -161,12 +181,10 @@ class OpenMuseSource(Source):
             raise DeviceNotFound("connected but could not subscribe to any data characteristic")
         await MuseS.initialize_device(self._client, cfg.preset)
 
-        if self._declared is not None:                 # reconnect: keep streams, account for the outage
-            outage = time.time() - (self._last_disconnect or time.time())
+        if self._declared is not None:     # reconnect: keep streams; the first new packet accounts for the outage
             for st in self._states.values():
-                if st.clock is not None:
-                    st.index += int(outage * st.clock.rate)
                 st.prev_sub = None
+                st.resume = True
             return list(self._declared.values())
 
         await asyncio.sleep(cfg.settle_s)
@@ -202,6 +220,10 @@ class OpenMuseSource(Source):
         m = re.search(rf'"{key}"\s*:\s*"([^"]+)"', self._control)
         return m.group(1) if m else ""
 
+    def _on_disconnect(self, gen: int) -> None:
+        if gen == self._gen:
+            self._disconnected.set()
+
     def _on_control(self, _: Any, data: bytearray) -> None:
         self._control = (self._control + data.decode("utf-8", errors="ignore"))[-4096:]
 
@@ -209,17 +231,21 @@ class OpenMuseSource(Source):
         from OpenMuse import parse_message
         from OpenMuse.utils import get_utc_timestamp
 
+        gen = self._gen
+
         def cb(_: Any, data: bytearray) -> None:
-            arrival = time.time()
+            arrival, mono = time.time(), time.monotonic()
+            if gen != self._gen:                 # a notification from a client we already replaced
+                return
             try:
                 parsed = parse_message(f"{get_utc_timestamp()}\t{uuid}\t{data.hex()}")
                 if self._live:
-                    self._handle(parsed, arrival)
+                    self._handle(parsed, arrival, mono)
                 else:
                     if self._declared is None:
                         for subs in parsed.values():
                             self._seen.update(s["tag_byte"] for s in subs)
-                    self._pending.append((parsed, arrival))
+                    self._pending.append((parsed, arrival, mono))
             except Exception as exc:   # never let a bad packet kill the BLE callback
                 self._errors += 1
                 if self._errors <= 5:
@@ -227,9 +253,10 @@ class OpenMuseSource(Source):
         return cb
 
     # -- decoding -----------------------------------------------------------------------------------
-    def _handle(self, parsed: dict[str, list[dict]], arrival: float) -> None:
+    def _handle(self, parsed: dict[str, list[dict]], arrival: float, mono: float | None = None) -> None:
         from OpenMuse.decode import SENSORS
         assert self._declared is not None
+        mono = time.monotonic() if mono is None else mono
         by_tag: dict[int, list[dict]] = {}
         for subs in parsed.values():
             for sub in subs:
@@ -243,6 +270,7 @@ class OpenMuseSource(Source):
             for sub in subs:
                 data = np.atleast_2d(np.asarray(sub["data"], dtype=np.float64))
                 st.index += st.advance(sub.get("subpkt_index"))
+                st.resume_index(mono, data.shape[0])
                 if cfg["type"] == "BATTERY":
                     self._battery = float(data[-1, 0])
                     self.ctx.emit(Chunk.single("battery", [self._battery], arrival))
@@ -268,8 +296,8 @@ class OpenMuseSource(Source):
         # BLE callbacks run on this event loop, so nothing can arrive between the drain and switching to live:
         # packets are handled strictly in arrival order (out-of-order handling looks like 255-subpacket gaps).
         pending, self._pending = self._pending, []
-        for parsed, arrival in pending:
-            self._handle(parsed, arrival)
+        for parsed, arrival, mono in pending:
+            self._handle(parsed, arrival, mono)
         self._live = True
         stop = asyncio.create_task(self._stop.wait())
         gone = asyncio.create_task(self._disconnected.wait())
@@ -277,14 +305,16 @@ class OpenMuseSource(Source):
         stop.cancel()
         gone.cancel()
         if self._disconnected.is_set() and not self._stop.is_set():
-            self._last_disconnect = time.time()
             raise SourceDisconnected("BLE link lost")
 
     async def stop(self) -> None:
         self._stop.set()
         client, self._client = self._client, None
-        if client is None:
-            return
+        if client is not None:
+            await self._release(client)
+
+    @staticmethod
+    async def _release(client: Any) -> None:
         try:
             from OpenMuse import MuseS
             if client.is_connected:
@@ -301,6 +331,8 @@ class OpenMuseSource(Source):
         worst = 0.0
         for st in self._states.values():
             counters[f"lost_subpackets_{st.tag:#04x}"] = st.lost_subpackets
+            if st.outage_missing:
+                counters[f"outage_samples_{st.tag:#04x}"] = st.outage_missing
             if st.subpackets:
                 worst = max(worst, st.lost_subpackets / (st.subpackets + st.lost_subpackets))
         if self._battery is not None:

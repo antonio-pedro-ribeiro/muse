@@ -4,7 +4,8 @@ import asyncio
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 import numpy as np
 import pytest

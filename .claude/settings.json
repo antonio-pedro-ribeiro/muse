@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude-in-chrome__find",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "mcp__claude-in-chrome__get_page_text",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-CimInstance Win32_Process *)",
+      "PowerShell(Get-Content *)"
+    ]
+  }
+}

@@ -57,6 +57,19 @@ def test_slow_device_clock_is_not_mistaken_for_loss():
     assert tl.gaps == 0
 
 
+def test_outage_longer_than_the_offset_window_still_advances_the_index():
+    """Phone locked for 65 s: the 60 s offset window would be empty when data resumes, which hid the whole gap."""
+    tl = _Timeline(RATE, 0.5, 1.0)
+    feed(tl, steady(0.0, 10))
+    before = tl.index
+    tl.resume()                                       # what MindMonitor.open() does on reconnect
+    first, t = tl.place(16, 75.0 + 16 / RATE)
+    assert tl.gaps == 1 and abs(first - before - 65 * RATE) <= 16
+    assert t[-1] == pytest.approx(75.0 + 16 / RATE, abs=0.1)        # no 65 s offset between index and time
+    feed(tl, steady(75.0 + 16 / RATE, 5))
+    assert tl.gaps == 1
+
+
 def free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.bind(("127.0.0.1", 0))

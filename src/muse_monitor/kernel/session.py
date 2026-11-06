@@ -16,7 +16,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Literal
+from collections.abc import Callable
 
 from ..sdk.plugin import Analyzer, Context, IncompatibleInput, Plugin, Sink, Source, SourceDisconnected
 from ..sdk.types import Chunk, Event, SessionInfo, StreamInfo, StreamSelector
@@ -118,6 +119,37 @@ class Snapshot:
             rows.append((float(t), [float(v) for v in row]))
 
 
+def _feeds(producer: Runtime, consumer: Runtime) -> bool:
+    """Could `producer` declare a stream that one of `consumer`'s input selectors picks?"""
+    if producer is consumer:
+        return False
+    made = list(getattr(producer.cls, "produces", []))
+    for sel in getattr(consumer.cls, "inputs", []):
+        if sel.any and made:
+            return True
+        if sel.id is not None:
+            if sel.id.split("/", 1)[0] == producer.instance_id and (sel.kind is None or sel.kind in made):
+                return True
+        elif sel.kind in made:
+            return True
+    return False
+
+
+def setup_order(analyzers: list[Runtime]) -> tuple[list[Runtime], list[str]]:
+    """Stable topological order: every analyzer after those producing what it reads (`Analyzer.produces`),
+    otherwise in pipeline order. Analyzers that read each other's kinds keep pipeline order and are returned as
+    the second value, so the caller can warn."""
+    remaining, out, cyclic = list(analyzers), [], []
+    while remaining:
+        nxt = next((c for c in remaining if not any(_feeds(p, c) for p in remaining)), None)
+        if nxt is None:
+            nxt = remaining[0]
+            cyclic.append(nxt.instance_id)
+        out.append(nxt)
+        remaining.remove(nxt)
+    return out, cyclic
+
+
 class Session:
     def __init__(self, registry: PluginRegistry, pipeline: Pipeline, *, data_dir: Path,
                  mode: Literal["live", "offline"] = "live", parent: str | None = None,
@@ -125,7 +157,7 @@ class Session:
         self.registry = registry
         self.pipeline = pipeline
         self.data_dir = data_dir
-        self.mode = mode
+        self.mode: Literal["live", "offline"] = mode
         self.info = SessionInfo(id=ulid(), label=pipeline.session.label, mode=mode, parent=parent,
                                 started_at=datetime.now(UTC), pipeline=pipeline.model_dump(mode="json"),
                                 app_version=app_version)
@@ -138,7 +170,7 @@ class Session:
         self.loop_thread: int | None = None
         self.done = asyncio.Event()
         self._stopping = False
-        self._stop_task: asyncio.Task[None] | None = None
+        self._stop_task: asyncio.Task[Any] | None = None
         self._source_task: asyncio.Task[None] | None = None
         self._snapshot_task: asyncio.Task[None] | None = None
         self._snap_sub: Subscriber | None = None
@@ -155,7 +187,9 @@ class Session:
     def _build(self) -> None:
         src, analyzers, sinks = self.pipeline.active()
         self.source = self._make(src, "source")
-        self.analyzers = [self._make(a, "analyzer") for a in analyzers]
+        self.analyzers, cyclic = setup_order([self._make(a, "analyzer") for a in analyzers])
+        if cyclic:
+            log.warning("analyzers %s read each other's stream kinds; set up in pipeline order", cyclic)
         self.sinks = [self._make(s, "sink") for s in sinks]
         ids = [rt.instance_id for rt in self.all]
         dupes = sorted({i for i in ids if ids.count(i) > 1})
@@ -225,6 +259,7 @@ class Session:
 
             for rt in self.analyzers:
                 self._setup_analyzer(rt)
+            self._warn_unseen_optional()
             for rt in self.sinks:
                 assert isinstance(rt.plugin, Sink)
                 inputs = self._resolve(list(rt.cls.inputs), rt.instance_id)  # type: ignore[attr-defined]
@@ -239,8 +274,8 @@ class Session:
 
             self.info.streams = [s.to_dict() for s in self.streams.values()]
             self.info.views = [v.model_dump() for v in self.views()]
-            snap_rate = lambda sid: self.streams[sid].producer != src.instance_id and \
-                self.streams[sid].rate <= SNAPSHOT_MAX_RATE
+            def snap_rate(sid: str) -> bool:
+                return self.streams[sid].producer != src.instance_id and self.streams[sid].rate <= SNAPSHOT_MAX_RATE
             policy, size = ("block", OFFLINE_QUEUE) if self.mode == "offline" else ("latest", LIVE_CRITICAL_QUEUE)
             self._snap_sub = self.bus.subscribe(Subscriber("snapshot", snap_rate, events=True, policy=policy,
                                                            maxsize=size))
@@ -273,6 +308,20 @@ class Session:
                                                policy=policy, maxsize=size))
         rt.task = asyncio.create_task(self._analyzer_worker(rt))
         rt.state = "running"
+
+    def _warn_unseen_optional(self) -> None:
+        """An optional input can silently miss a stream declared by an analyzer set up later (one that doesn't
+        declare `produces`): say so instead."""
+        rank = {rt.instance_id: i for i, rt in enumerate(self.analyzers)}
+        for i, rt in enumerate(self.analyzers):
+            for sel in getattr(rt.cls, "inputs", []):
+                if not sel.optional:
+                    continue
+                late = sorted({s.id for s in self.streams.values()
+                               if sel.matches(s) and rank.get(s.producer, -1) > i and s.id not in rt.inputs})
+                if late:
+                    rt.ctx.log.warning("does not read %s: declared after it was set up. List the producer "
+                                       "earlier, or declare `produces` on its plugin class", late)
 
     def _private_device(self, src: Source) -> Any:
         dev = src.device

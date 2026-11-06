@@ -66,18 +66,26 @@ class _Timeline:
         self.last_t = -math.inf
         self.gaps = 0
         self.inferred_missing = 0
+        self.resumed = False
+
+    def resume(self) -> None:
+        """The stream came back after a disconnect: the next lateness is lost data, so record it at once."""
+        self.resumed = True
 
     def place(self, n: int, arrival: float) -> tuple[int, np.ndarray]:
         """n samples, the last of which arrived at `arrival` -> (first index, sample times)."""
         off = arrival - (self.index + n) / self.rate
-        while self.window and arrival - self.window[0][0] > 60.0:
+        # keep at least the latest anchor: after a long silence the window would otherwise be empty, and the
+        # new data would look on time however much of it was lost
+        while len(self.window) > 1 and arrival - self.window[0][0] > 60.0:
             self.window.popleft()
         best = min([o for _, o in self.window] + [off])
         deficit = (off - best) * self.rate       # samples this batch is "late" by
+        resumed, self.resumed = self.resumed, False
         if deficit > self.tolerance:
-            if self.late_since is None:
+            if self.late_since is None and not resumed:
                 self.late_since = arrival
-            elif arrival - self.late_since >= self.confirm:      # still late: data was lost, not delayed
+            elif resumed or arrival - self.late_since >= self.confirm:      # data was lost, not delayed
                 missing = int(round(deficit))
                 self.index += missing
                 self.gaps += 1
@@ -98,7 +106,8 @@ class _Timeline:
 
 class MindMonitor(Source):
     name = "mindmonitor"
-    version = "1.1.0"            # 1.1: EEG centred automatically (Athena 725 µV, classic Muse 841 µV)
+    version = "1.2.0"            # 1.1: EEG centred automatically (Athena 725 µV, classic Muse 841 µV)
+                                 # 1.2: outages longer than 60 s still advance the sample index
     summary = "Muse via the Mind Monitor phone app (OSC over UDP)"
     requires = ["pythonosc"]
 
@@ -206,6 +215,8 @@ class MindMonitor(Source):
                                  "and start streaming; allow UDP port "
                                  f"{c.port} through the Windows firewall.{heard}")
         if self._declared is not None:              # reconnect: same streams, the timelines record the gap
+            for tl in self._timelines.values():
+                tl.resume()
             return list(self._declared.values())
         await asyncio.sleep(c.settle_s)
         self.device = DeviceInfo(id=f"udp:{c.port}", name="Mind Monitor (OSC)", model="Muse via Mind Monitor",

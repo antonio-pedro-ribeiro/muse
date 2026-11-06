@@ -155,7 +155,7 @@ def export_edf(session_dir: Path, out: Path) -> Path:
         r = min(n_records - 1, int(onset))
         clean = text.replace("\x14", " ").replace("\x15", " ")
         dur_s = f"\x15{dur:.3f}" if dur > 0 else ""
-        per_record[r].append(f"+{onset:.4f}{dur_s}\x14{clean}\x14\x00".encode("utf-8"))
+        per_record[r].append(f"+{onset:.4f}{dur_s}\x14{clean}\x14\x00".encode())
     tal_bytes = [f"+{r}\x14\x14\x00".encode() + b"".join(a) for r, a in enumerate(per_record)]
     ann_samples = max(30, math.ceil(max(len(b) for b in tal_bytes) / 2))
 

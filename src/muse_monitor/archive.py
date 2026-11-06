@@ -14,7 +14,8 @@ import uuid
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from .sdk import storage
 from .sdk.types import SessionInfo

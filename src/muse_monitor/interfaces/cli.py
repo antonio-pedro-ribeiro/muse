@@ -579,6 +579,8 @@ def train_probe(
     label_from: Annotated[str, typer.Option(help="markers | calibration")] = "markers",
     out: Annotated[Path, typer.Option(help="Head file to write (.npz).")] = Path("head.npz"),
     window_s: Annotated[Optional[float], typer.Option(help="Seconds per window (model default if empty).")] = None,
+    min_usable: Annotated[float, typer.Option(help="Skip windows where a smaller share of electrodes had good "
+                                                   "contact (0-1).")] = 0.5,
     json_out: JsonOpt = False, server: ServerOpt = None, token: TokenOpt = None,
 ) -> None:
     """Train a linear probe on model embeddings and compare it with band power (session-held-out CV)."""
@@ -587,11 +589,14 @@ def train_probe(
     async def go() -> None:
         with console.status("embedding sessions and cross-validating…"):
             r = await call(facade(server, token).train_probe, sessions, plugin, label_from,
-                           str(out if server else out.resolve()), options)
+                           str(out if server else out.resolve()), options, min_usable)
 
         def human(d: dict[str, Any]) -> None:
             cv = d["cv"]
             console.print(f"windows per label: {d['windows']}   CV: {cv['scheme']}   chance {cv['chance']:.2f}")
+            if d.get("low_quality_windows"):
+                console.print(f"[yellow]{d['low_quality_windows']} labelled windows skipped: under "
+                              f"{min_usable:.0%} of electrodes had good contact[/]")
             t = Table("fold", "test windows", f"{plugin} probe", "band power", title="balanced accuracy",
                       title_justify="left")
             for i, f in enumerate(cv["folds"]):
@@ -601,7 +606,9 @@ def train_probe(
                       f"[bold]{cv['baseline_mean']:.3f}[/] ± {cv['baseline_std']:.3f}")
             console.print(t)
             console.print(("[green]" if cv["model_beats_baseline"] else "[yellow]") + d["verdict"] + "[/]")
-            console.print(f"head written to {d['head']}")
+            console.print(f"head written to {d['head']}" + (" on the server" if d.get("downloaded") else ""))
+            if d.get("downloaded"):
+                console.print(f"copy downloaded to {d['downloaded']}")
             console.print(f"To use it, add head = '{d['head']}' to the {plugin} analyzer in a pipeline file.")
         emit(r, json_out, human)
     run(go())
@@ -635,16 +642,17 @@ def analyze(
         if job["status"] == "failed":
             raise KernelError(job["error"] or "analysis failed")
         name = job["result"].get("report")
-        if name and report and not server:
-            from ..kernel import KernelFacade
-            assert isinstance(f, KernelFacade)
-            report.write_bytes(f.report_path(session_id, name).read_bytes())
+        if name and report:
+            if server:
+                report.write_bytes(await f.report_bytes(session_id, name))
+            else:
+                report.write_bytes(f.report_path(session_id, name).read_bytes())
         def human(j: dict[str, Any]) -> None:
             for r in j["result"].get("reports", []):
                 print_report(r)
             if name:
                 where = j["result"].get("report_path") or name
-                console.print(f"report: {where}" + (f" (copied to {report})" if report and not server else ""))
+                console.print(f"report: {where}" + (f" (copied to {report})" if report else ""))
         emit(job, json_out, human)
     run(go())
 

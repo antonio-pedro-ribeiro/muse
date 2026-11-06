@@ -29,6 +29,26 @@ def models_dir() -> Path:
     return Path(env) if env else Path.home() / ".cache" / "muse-monitor" / "models"
 
 
+PROBE_MIN_MARGIN = 0.05     # held-out balanced accuracy a probe must gain over band power to be recommended
+
+
+def probe_validation(cv: dict[str, Any]) -> dict[str, Any]:
+    """The summary of `muse train-probe` cross-validation that decides whether a probe is worth using."""
+    folds = cv.get("folds", [])
+    v = {k: cv.get(k) for k in ("scheme", "model_mean", "baseline_mean", "chance")}
+    v["model_fold_wins"] = sum(f["model"] > f["baseline"] for f in folds)
+    v["folds"] = len(folds)
+    return v
+
+
+def probe_validated(v: dict[str, Any], min_margin: float = PROBE_MIN_MARGIN) -> bool:
+    """True if, on held-out sessions, the probe beat band power by `min_margin` on average and in most sessions.
+    Time-block estimates from a single session are optimistic and never count."""
+    return (str(v.get("scheme") or "").startswith("session")
+            and (v.get("model_mean") or 0) - (v.get("baseline_mean") or 0) >= min_margin
+            and v.get("folds", 0) > 0 and v.get("model_fold_wins", 0) * 2 > v["folds"])
+
+
 @dataclass
 class ProbeHead:
     """Standardize, then a linear layer: logistic (2 classes) or softmax (more)."""
@@ -68,6 +88,7 @@ class ModelAnalyzer(Analyzer):
 
     cpu_bound = True
     inputs = [StreamSelector(kind="eeg")]
+    produces = ["derived"]
     embedding_dim: ClassVar[int]
 
     class Config(BaseModel):
@@ -141,11 +162,7 @@ class ModelAnalyzer(Analyzer):
         if self.head is not None:
             self._check_head(self.head)
             self.class_sum = np.zeros(len(self.head.classes))
-            cv = self.head.meta.get("cv", {})
-            folds = cv.get("folds", [])
-            validation = {k: cv.get(k) for k in ("scheme", "model_mean", "baseline_mean", "chance")}
-            validation["model_fold_wins"] = sum(f["model"] > f["baseline"] for f in folds)
-            validation["folds"] = len(folds)
+            validation = probe_validation(self.head.meta.get("cv", {}))
             out.append(StreamInfo("probs", "derived", self.head.classes, ["1"] * len(self.head.classes), rate,
                                   meta={**meta, "head": str(self.config.head), "validation": validation}))
         return out

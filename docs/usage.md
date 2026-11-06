@@ -181,7 +181,7 @@ You can add your own plugins as `.py` files in a `plugins/` folder in the workin
 | Command | What it does |
 |---|---|
 | `muse models pull cbramod [--revision SHA]` | Downloads the model weights. This is the only command that downloads anything. |
-| `muse train-probe ID... [--label-from markers\|calibration] [--out head.npz]` | Trains a classifier on your labelled sessions and compares it with band power. See [section 6](#6-models-and-probes). |
+| `muse train-probe ID... [--label-from markers\|calibration] [--out head.npz] [--min-usable 0.5]` | Trains a classifier on your labelled sessions and compares it with band power. See [section 6](#6-models-and-probes). |
 
 ### Web server: `muse serve`
 
@@ -368,8 +368,16 @@ signal. Those numbers mean nothing to read directly. To get something useful you
    tested by a probe that never saw it, which shows how well it carries over to a new day. With a
    single session it falls back to time blocks within it, and labels the result optimistic.
 
-   The verdict says whether the model beats band power. If it doesn't, band power is the simpler
+   Windows where fewer than half the electrodes had good contact are skipped (`--min-usable`
+   changes the share), and the number skipped is shown.
+
+   The verdict says whether the model beats band power: by at least 0.05 on average **and** in most
+   held-out sessions. A single session never counts. This is the same rule the brain-wave
+   descriptions use before they quote a probe. If the model doesn't pass, band power is the simpler
    and better choice for that task, and the model isn't worth running.
+
+   With `--server`, the head is stored on the server under `recordings/.muse/probes/` and a copy
+   is downloaded to `--out`.
 
 4. **Use the probe live or offline.** Add `cbramod` with `head = "eyes.npz"` to a pipeline file
    ([section 5](#5-pipelines-toml)). *Probe output* then shows the probability per label under **Brain

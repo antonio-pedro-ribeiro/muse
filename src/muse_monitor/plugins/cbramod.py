@@ -23,7 +23,7 @@ MODEL_RATE = 200.0
 
 class CBraMod(ModelAnalyzer):
     name = "cbramod"
-    version = "1.0.0"
+    version = "1.1.0"            # 1.1: even (mirror) padding before zero-phase filtering each window
     summary = "CBraMod EEG foundation model -> 200-dim embeddings (+ probe head)"
     requires = ["torch", "braindecode", "safetensors", "huggingface_hub"]
     install_hint = "install the models extra: uv sync --extra models"
@@ -58,7 +58,8 @@ class CBraMod(ModelAnalyzer):
         from scipy.signal import resample_poly, sosfiltfilt
         x = w.data.astype(np.float64).T                              # (channels, samples), µV
         x = x - x.mean(axis=1, keepdims=True)
-        x = sosfiltfilt(self._sos(rate), x, axis=1)
+        # The 0.3 Hz high-pass takes ~2 s to settle; mirrored padding up to 2 s keeps edge ringing out of a 4 s window
+        x = sosfiltfilt(self._sos(rate), x, axis=1, padtype="even", padlen=min(int(2 * rate), x.shape[1] - 1))
         ratio = Fraction(MODEL_RATE / rate).limit_denominator(1000)
         if ratio != 1:
             x = resample_poly(x, ratio.numerator, ratio.denominator, axis=1)

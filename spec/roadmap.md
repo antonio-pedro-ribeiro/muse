@@ -28,9 +28,11 @@
 | API / CLI | FastAPI TestClient, Typer CliRunner with `--json` |
 | Web | Playwright smoke test on a synthetic session |
 
-CI: `uv run pytest -m "not device"`, `ruff`, `pyright --strict` on `sdk/` and `kernel/`.
+CI (`.github/workflows/ci.yml`, on pushes to `main` and on pull requests): `uv run pytest -m "not device"`,
+`ruff check` (rules in `pyproject.toml`), and `pyright` on `sdk/` and `kernel/` in standard mode. Strict mode is
+still the goal.
 
-**Not in place yet:** CI, the Playwright smoke test, fixture captures in `samples/` (so no parser or golden replay tests from real data) and a cycle-rejection test. 65 tests run locally; the CBraMod test is skipped until `muse models pull cbramod` has run.
+**Not in place yet:** the Playwright smoke test, fixture captures in `samples/` (so no parser or golden replay tests from real data), and pyright strict mode. 65 tests run locally; the CBraMod test is skipped until `muse models pull cbramod` has run.
 
 ## 4. Status
 

@@ -60,8 +60,28 @@ openmuse = { git = "https://github.com/DominiqueMakowski/OpenMuse" }
 [dependency-groups]
 dev = [
     "mne>=1.13.2",
+    "pyright>=1.1.414",
     "pytest>=9.2.0",
+    "ruff>=0.17.4",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP"]
+ignore = [
+    "E501",    # long strings (UI text, descriptions) read better unbroken; 120 is the soft limit
+    "B008",    # FastAPI / Typer declare parameters with calls in defaults (Body(...), Query(...))
+    "B905",    # zip() over arrays of equal length by construction
+    "UP045",   # Typer options keep Optional[...]
+]
+
+[tool.pyright]
+include = ["src/muse_monitor/kernel", "src/muse_monitor/sdk"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

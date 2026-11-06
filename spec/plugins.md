@@ -53,6 +53,8 @@ events. The gap is recorded.
 class Analyzer(Plugin):
     kind = "analyzer"
     inputs: ClassVar[list[StreamSelector]]          # e.g. [StreamSelector(kind="eeg")]
+    produces: ClassVar[list[str]] = []              # stream kinds setup() may declare, e.g. ["mask", "derived"];
+                                                    # producers are set up before the analyzers that read them
 
     def setup(self, inputs: dict[str, StreamInfo]) -> list[StreamInfo]: ...  # outputs; may raise IncompatibleInput
     async def process(self, chunk: Chunk, gap: bool) -> None: ...  # gap=True -> reset state first

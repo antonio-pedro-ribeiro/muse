@@ -132,9 +132,21 @@ class RemoteFacade:
                                 timeout=1800.0)
 
     async def train_probe(self, sessions: list[str], plugin: str = "cbramod", label_from: str = "markers",
-                          out: str = "head.npz", options: dict[str, Any] | None = None) -> dict[str, Any]:
-        body = {"sessions": sessions, "plugin": plugin, "label_from": label_from, "out": out, "options": options}
-        return await self._json("POST", "/probes", json=body, timeout=3600.0)
+                          out: str = "head.npz", options: dict[str, Any] | None = None,
+                          min_usable: float = 0.5) -> dict[str, Any]:
+        """The server keeps the head under its data folder (named after `out`); a copy is downloaded to `out`.
+        `head` in the result stays the server's path, which is what a pipeline run by that server needs."""
+        name = Path(out).stem
+        body = {"sessions": sessions, "plugin": plugin, "label_from": label_from, "name": name, "options": options,
+                "min_usable": min_usable}
+        result = await self._json("POST", "/probes", json=body, timeout=3600.0)
+        r = await self._req("GET", f"/probes/{name}")
+        Path(out).write_bytes(r.content)
+        result["downloaded"] = str(Path(out).resolve())
+        return result
+
+    async def report_bytes(self, sid: str, name: str) -> bytes:
+        return (await self._req("GET", f"/sessions/{sid}/reports/{name}")).content
 
     async def export(self, sid: str, fmt: str, out: Path | None = None) -> list[str]:
         r = await self._req("POST", f"/sessions/{sid}/export", params={"format": fmt}, timeout=600.0)

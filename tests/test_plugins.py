@@ -31,6 +31,17 @@ def test_bandpower_peak(freq, band):
     assert mr.info.channels[int(np.nanmean(mr.data, axis=0).argmax())] == band
 
 
+def test_band_shares_sum_to_one():
+    """Contiguous bands must cover the whole total range: 1 Hz Welch bins at each band edge used to be lost."""
+    from muse_monitor.sdk import DEFAULT_BANDS, band_powers
+    f = np.arange(0.0, 129.0)
+    p = np.ones((len(f), 2))
+    total = band_powers(f, p, {"total": (1.0, 45.0)})[0]
+    assert np.allclose(band_powers(f, p, DEFAULT_BANDS).sum(axis=0), total)
+    out = run_analyzer(BandPower, source=synthetic(sines={3.5: 20, 7.5: 20, 12.5: 20}, noise_uv=5), seconds=10)
+    assert np.allclose(np.nansum(out["mean_rel"].data, axis=1), 1.0, atol=1e-9)
+
+
 def test_quality_flags_flat_channel():
     ctx = CaptureContext()
     q = Quality(Quality.Config(), ctx)
@@ -185,6 +196,83 @@ def test_openmuse_eeg_is_centred_on_zero(monkeypatch):
     x = ctx.stacked("eeg")
     assert np.allclose(x[:, 0], [0.0, 100 * 1450 / 16383, -725.04], atol=0.01)
     assert src._declared["eeg"].meta["offset_uv"] == pytest.approx(-725.04, abs=0.01)
+
+
+def test_openmuse_reconnect_skips_exactly_the_outage(monkeypatch):
+    """After a lost link: the old client is released, its late callbacks are ignored, and the sample index skips
+    the samples produced while no data arrived, measured on the monotonic clock up to the first new packet (not
+    to the end of the 1.5 s re-initialisation, during which new packets already queue up)."""
+    import types
+
+    import bleak
+    import OpenMuse
+
+    from muse_monitor.plugins import openmuse
+
+    clock = {"wall": 1_700_000_000.0, "mono": 0.0}
+
+    def tick(dt: float) -> None:
+        clock["wall"] += dt
+        clock["mono"] += dt
+    monkeypatch.setattr(openmuse, "time", types.SimpleNamespace(time=lambda: clock["wall"],
+                                                                monotonic=lambda: clock["mono"]))
+    monkeypatch.setattr(OpenMuse, "parse_message", lambda line: {
+        "EEG": [{"tag_byte": 0x12, "subpkt_index": int(line.split("\t")[2], 16), "data": np.zeros((2, 8))}]})
+
+    clients = []
+
+    class FakeClient:
+        def __init__(self, address, timeout, disconnected_callback):
+            self.on_lost, self.callbacks, self.is_connected, self.released = disconnected_callback, {}, False, False
+            clients.append(self)
+
+        async def connect(self):
+            self.is_connected = True
+
+        async def start_notify(self, uuid, cb):
+            self.callbacks[uuid] = cb
+
+        async def disconnect(self):
+            self.released, self.is_connected = True, False
+
+        def packet(self, sub: int):
+            self.callbacks[OpenMuse.MuseS.DATA_CHARACTERISTICS[0]](None, bytearray([sub]))
+
+    async def initialize(client, preset, verbose=False):
+        if len(clients) > 1:              # reconnect: data resumes 3 s after the last packet, init ends 1.5 s later
+            tick(3.0)
+            client.packet(50)
+            tick(1.5)
+
+    monkeypatch.setattr(bleak, "BleakClient", FakeClient)
+    monkeypatch.setattr(OpenMuse.MuseS, "initialize_device", staticmethod(initialize))
+    ctx = CaptureContext("live")
+    src = openmuse.OpenMuseSource(openmuse.OpenMuseSource.Config(address="AA", settle_s=0.0), ctx)
+
+    async def go():
+        await src.open()
+        task = asyncio.create_task(src.run())
+        await asyncio.sleep(0)
+        for i in range(10):                                    # 20 samples, 2 per subpacket
+            tick(2 / 256)
+            clients[0].packet(i)
+        clients[0].on_lost(clients[0])
+        with pytest.raises(openmuse.SourceDisconnected):
+            await task
+        await src.open()                                       # what Session._reconnect does
+        clients[0].on_lost(clients[0])                         # late callback from the old client: ignored
+        clients[0].packet(99)                                  # stale notification from the old client: ignored
+        src._stop.set()
+        await src.run()
+        await asyncio.sleep(0)
+        return src._disconnected.is_set()
+
+    assert asyncio.run(go()) is False
+    assert clients[0].released
+    first = [c.first_index for c in ctx.chunks["eeg"]]
+    assert first[:10] == list(range(0, 20, 2))
+    assert first[10:] == [20 + 3 * 256 - 2]                   # 3 s without data = 768 samples, 2 of them received
+    assert src.health().counters["outage_samples_0x12"] == 3 * 256 - 2
 
 
 def test_quality_usable_ignores_aux_and_mask_carries_positions():

@@ -97,12 +97,16 @@ class _Decimator:
         return out
 
 
+MAX_JOBS = 100          # finished jobs kept for GET /jobs/{id}; older ones are forgotten
+
+
 @dataclass
 class Job:
     id: str
     kind: str
     parent: str
-    session: Session | None = None
+    session: Session | None = None      # released when the job ends: its snapshot can hold tens of MB
+    session_id: str | None = None
     status: str = "running"
     error: str | None = None
     result: dict[str, Any] = field(default_factory=dict)
@@ -117,7 +121,7 @@ class Job:
                 pass
         return {"id": self.id, "kind": self.kind, "parent": self.parent, "status": self.status,
                 "progress": round(progress, 3), "error": self.error,
-                "session_id": self.session.info.id if self.session else None, "result": self.result}
+                "session_id": self.session_id, "result": self.result}
 
 
 class KernelFacade:
@@ -176,7 +180,7 @@ class KernelFacade:
             if describe_ok and not any(e.plugin == "describe" for e in entries):
                 entries.append(PluginEntry(plugin="describe"))
         pipe = Pipeline(session=SessionSection(label=f"Replay of {parent.label or parent.id} ({speed:g}×)"),
-                        source=SourceEntry(plugin="replay", path=str(d), speed=speed), analyzer=entries, sink=[])
+                        source=SourceEntry.model_validate({"plugin": "replay", "path": str(d), "speed": speed}), analyzer=entries, sink=[])
         return await self.start_session(pipe)
 
     async def stop_session(self, session_id: str) -> dict[str, Any]:
@@ -344,21 +348,34 @@ class KernelFacade:
         else:
             pipe = parse_pipeline(pipeline) if isinstance(pipeline, (dict, Pipeline)) else pipeline
         pipe = pipe.model_copy(update={
-            "source": SourceEntry(plugin="replay", path=str(self.session_dir(session_id)), speed=speed),
+            "source": SourceEntry.model_validate({"plugin": "replay", "path": str(self.session_dir(session_id)),
+                                                 "speed": speed}),
             "sink": [x for x in pipe.sink if x.plugin != "recorder"] + [PluginEntry(plugin="recorder")],
         })
         session = Session(self.registry, pipe, data_dir=self.data_dir, mode="offline", parent=session_id,
                           app_version=APP_VERSION)
-        job = Job(id=ulid(), kind="analysis", parent=session_id, session=session)
+        job = Job(id=ulid(), kind="analysis", parent=session_id, session=session, session_id=session.info.id)
+        self._forget_old_jobs()
         self.jobs[job.id] = job
-        job.task = asyncio.create_task(self._run_job(job, session, report))
+        # the recording's baseline is known from the start: without it, `bandpower/norm` would be missing until
+        # calibration ends again in the replay, and would race with the replayed EEG after it
+        seed = [Event("baseline.ready", parent.started_at.timestamp(), source="kernel",
+                      data={**parent.baseline, "seeded_from": session_id})] if parent.baseline else []
+        job.task = asyncio.create_task(self._run_job(job, session, report, seed))
         await asyncio.sleep(0)
         return job.to_dict()
 
-    async def _run_job(self, job: Job, session: Session, report: bool) -> None:
+    def _forget_old_jobs(self) -> None:
+        done = [j for j in self.jobs.values() if j.status != "running"]
+        for j in done[:max(0, len(self.jobs) - MAX_JOBS + 1)]:     # dicts keep insertion order: oldest first
+            del self.jobs[j.id]
+
+    async def _run_job(self, job: Job, session: Session, report: bool, seed: list[Event] | None = None) -> None:
         try:
             self.active[session.info.id] = session
             await session.start()
+            for event in seed or []:          # before the source task runs, so ahead of every replayed chunk
+                session.inject(event)
             await session.done.wait()
             if session.info.status == "failed":
                 raise KernelError(session.info.error or "analysis failed")
@@ -373,6 +390,7 @@ class KernelFacade:
             job.status, job.error = "failed", f"{type(exc).__name__}: {exc}"
         finally:
             self.active.pop(session.info.id, None)
+            job.session = None
 
     def get_job(self, job_id: str) -> dict[str, Any]:
         if job_id not in self.jobs:
@@ -388,7 +406,7 @@ class KernelFacade:
     # -- models -----------------------------------------------------------------------------------
     async def pull_model(self, plugin: str, revision: str | None = None) -> dict[str, Any]:
         """Download a model plugin's pinned weights (the only place weights are downloaded)."""
-        cls = self.registry.get(plugin, "analyzer")
+        cls: Any = self.registry.get(plugin, "analyzer")     # a ModelAnalyzer subclass, checked below
         if not hasattr(cls, "pull"):
             raise ConfigError(f"plugin {plugin!r} has no model weights")
         cfg = cls.Config(**({"revision": revision} if revision else {}))
@@ -396,9 +414,26 @@ class KernelFacade:
         return {"plugin": plugin, "weights": cfg.weights, "revision": cfg.revision, "path": str(path)}
 
     async def train_probe(self, sessions: list[str], plugin: str = "cbramod", label_from: str = "markers",
-                          out: str = "head.npz", options: dict[str, Any] | None = None) -> dict[str, Any]:
+                          out: str | None = None, options: dict[str, Any] | None = None, min_usable: float = 0.5,
+                          name: str | None = None) -> dict[str, Any]:
+        """`out`: any path, for callers on this machine (the CLI). `name`: the head is stored as
+        <data>/.muse/probes/<name>.npz instead; the HTTP API only offers this, so clients cannot pick server paths."""
         from ..probe import train_probe
-        return await train_probe(self, [self._check_id(s) for s in sessions], plugin, label_from, out, options)
+        path = Path(out) if out is not None else self.probe_path(name or "head", must_exist=False)
+        if out is None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        return await train_probe(self, [self._check_id(s) for s in sessions], plugin, label_from, path, options,
+                                 min_usable)
+
+    def probe_path(self, name: str, must_exist: bool = True) -> Path:
+        """A probe head stored by name under the data folder (`name` is a single path component)."""
+        stem = name.strip().removesuffix(".npz")
+        if not re.fullmatch(r"[0-9A-Za-z_-]{1,64}", stem):
+            raise ConfigError(f"invalid probe name {name!r}: use letters, digits, '-' or '_'")
+        p = self.data_dir / ".muse" / "probes" / f"{stem}.npz"
+        if must_exist and not p.is_file():
+            raise NotFound(f"no probe head {stem!r}")
+        return p
 
     # -- stored data ------------------------------------------------------------------------------
     def _recorder(self) -> Any:

@@ -72,7 +72,7 @@ class Replay(Source):
                     b = min(a + step, seg_b)
                     yield float(t[a]), 1, Chunk(sid, data[a:b], t[a:b], int(idx[a]))
         iters = [stream_iter(sid) for sid in self._data]
-        iters.append(((e.t, 0, e) for e in self._events))
+        iters.append((e.t, 0, e) for e in self._events)
         return heapq.merge(*iters, key=lambda x: (x[0], x[1]))
 
     async def run(self) -> None:

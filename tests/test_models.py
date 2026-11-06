@@ -86,6 +86,33 @@ def test_segments_and_window_labels():
     assert segments(evs, "calibration", 40.0) == [(0.0, 5.0, "eyes_open")]
 
 
+def test_window_usable_averages_quality_inside_each_window():
+    from muse_monitor.probe import window_usable
+    tq = np.arange(1.0, 11.0)                                   # quality judged every second
+    usable = np.where(tq <= 5, 1.0, 0.25)
+    u = window_usable(np.array([4.0, 6.0, 10.0, 0.5]), 4.0, tq, usable)
+    assert u[:3].tolist() == [1.0, 0.8125, 0.25] and np.isnan(u[3])
+
+
+def test_probe_verdict_is_the_rule_describe_applies():
+    from muse_monitor.probe import verdict
+    from muse_monitor.sdk import probe_validated, probe_validation
+
+    def cv(scheme, wins):                                      # model 0.80 vs band power 0.70 on average
+        folds = [{"model": 0.9 if i < wins else 0.6, "baseline": 0.7} for i in range(3)]
+        out = {"scheme": scheme, "folds": folds, "model_mean": 0.8, "baseline_mean": 0.7, "chance": 0.5}
+        v = probe_validation(out)
+        return {**out, "model_fold_wins": v["model_fold_wins"], "model_beats_baseline": probe_validated(v)}
+    assert cv("session-held-out", 2)["model_beats_baseline"]
+    assert not cv("session-held-out", 1)["model_beats_baseline"]          # better on average, not per session
+    assert not cv("time-blocks (single session: optimistic)", 3)["model_beats_baseline"]
+    assert "won 1 of 3" in verdict(cv("session-held-out", 1))
+    assert "Only one session" in verdict(cv("time-blocks (single session: optimistic)", 3))
+    close = probe_validation({"scheme": "session-held-out", "folds": [{"model": 0.72, "baseline": 0.7}] * 3,
+                              "model_mean": 0.72, "baseline_mean": 0.7})
+    assert not probe_validated(close)                                       # 0.02 < the 0.05 margin
+
+
 def test_synthetic_script_adds_markers_and_changes_rhythm():
     out = run_pipeline([], synthetic(sines={20.0: 6.0}, script=EYES[:2], noise_uv=1.0), seconds=60)
     assert [e.data["label"] for e in out.events_of("marker")] == ["eyes open", "eyes closed"]
@@ -115,6 +142,9 @@ def test_train_probe_end_to_end(data_dir, weights, tmp_path):
     assert cv["scheme"] == "session-held-out" and len(cv["folds"]) == 2
     assert set(r["windows"]) == {"eyes open", "eyes closed"}
     assert cv["model_mean"] > 0.9 and cv["baseline_mean"] > 0.9               # easy, separable task
+    assert r["low_quality_windows"] == 0                                     # clean synthetic contact
+    from muse_monitor.sdk import probe_validated, probe_validation
+    assert cv["model_beats_baseline"] == probe_validated(probe_validation(cv))
     head = ProbeHead.load(r["head"])
     assert head.classes == ["eyes closed", "eyes open"] and head.meta["model"] == "fakemodel"
 

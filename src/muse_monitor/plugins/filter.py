@@ -13,6 +13,7 @@ class Filter(Analyzer):
     version = "1.0.0"
     summary = "1-40 Hz band-pass + 50/60 Hz notch for display"
     inputs = [StreamSelector(kind="eeg")]
+    produces = ["eeg_filtered"]
     requires = ["scipy"]
 
     class Config(BaseModel):

@@ -187,7 +187,7 @@ def _report(stats: dict[int, SensorStats], info: dict[str, str], args) -> int:
             f"{rate:>9.1f}{nominal:>9.1f}{s.lost:>6}  {status}"
         )
 
-    for tag, s in stats.items():
+    for s in stats.values():
         if s.cfg["type"] == "BATTERY" and s.chunks:
             print(f"\nBattery: {float(np.concatenate(s.chunks)[-1, 0]):.0f}%")
 

@@ -5,7 +5,8 @@ Labels come from the recording's events:
   markers      each marker starts a segment labelled with its text, until the next marker or the end
                ("", "-" or "rest" mean unlabelled)
   calibration  the eyes-open / eyes-closed calibration periods
-A window is used only if it lies completely inside one labelled segment.
+A window is used only if it lies completely inside one labelled segment, and only if enough electrodes had good
+contact during it (`quality/usable` >= `min_usable`): flat or railing channels would otherwise dominate the fit.
 
 Cross-validation holds out whole sessions. With a single session it falls back to contiguous time blocks with
 a buffer around each test block (overlapping windows would otherwise leak), and says so: that estimate is
@@ -22,7 +23,7 @@ import numpy as np
 
 from .kernel.config import Pipeline, PluginEntry, SourceEntry
 from .kernel.errors import ConfigError, KernelError
-from .sdk import ProbeHead, storage
+from .sdk import PROBE_MIN_MARGIN, ProbeHead, probe_validated, probe_validation, storage
 
 UNLABELLED = {"", "-", "rest"}
 
@@ -35,6 +36,7 @@ class Dataset:
     model: np.ndarray        # embeddings (n, d)
     baseline: np.ndarray     # log10 band powers (n, channels*bands)
     meta: dict[str, Any]     # embedding stream meta (model, revision, channels, window_s)
+    low_quality: int = 0     # labelled windows dropped because too few electrodes were usable
 
 
 def segments(events: list[dict[str, Any]], label_from: str, t_end: float) -> list[tuple[float, float, str]]:
@@ -55,16 +57,27 @@ def label_windows(t_end: np.ndarray, window_s: float, segs: list[tuple[float, fl
     return out
 
 
+def window_usable(t_end: np.ndarray, window_s: float, tq: np.ndarray, usable: np.ndarray) -> np.ndarray:
+    """Mean share of usable electrodes over each window (t_end - window_s, t_end]; NaN where nothing was judged."""
+    c = np.concatenate([[0.0], np.cumsum(np.nan_to_num(usable))])
+    lo, hi = np.searchsorted(tq, t_end - window_s, "right"), np.searchsorted(tq, t_end, "right")
+    n = hi - lo
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(n > 0, (c[hi] - c[lo]) / n, np.nan)
+
+
 async def collect(facade: Any, session_ids: list[str], plugin: str, options: dict[str, Any],
-                  label_from: str) -> Dataset:
+                  label_from: str, min_usable: float = 0.5) -> Dataset:
     cls = facade.registry.get(plugin, "analyzer")
     cfg = cls.Config(**options)
     if not cls.pulled(cfg):
         raise ConfigError(f"weights for {plugin} are not downloaded; run `muse models pull {plugin}`")
     rows: list[tuple[np.ndarray, ...]] = []
     meta: dict[str, Any] = {}
+    low_quality = 0
     for sid in session_ids:
         pipe = Pipeline(source=SourceEntry(plugin="replay"), analyzer=[
+            PluginEntry(plugin="quality", id="q"),
             PluginEntry(plugin=plugin, id="model", **{**options, "head": None}),
             PluginEntry(plugin="bandpower", id="bp", window_s=cfg.window_s, step_s=cfg.step_s, use_quality=False,
                         channels=cfg.channels)])
@@ -83,10 +96,14 @@ async def collect(facade: Any, session_ids: list[str], plugin: str, options: dic
         _, raw_t, _, _ = storage.read_stream(d, "eeg")
         segs = segments(storage.read_events(d, derived=False), label_from, float(raw_t[-1]))
         labels = label_windows(te, cfg.window_s, segs)
+        _, tq, _, usable = storage.read_stream(d, "q/usable")
+        good = window_usable(te, cfg.window_s, tq, usable[:, 0]) >= min_usable      # NaN compares False
         keep = near & (labels != "") & np.isfinite(emb).all(axis=1) & np.isfinite(base).all(axis=1)
+        low_quality += int((keep & ~good).sum())
+        keep &= good
         rows.append((te[keep], np.full(keep.sum(), sid, dtype=object), labels[keep], emb[keep], base[keep]))
     t, sess, lab, x_model, x_base = (np.concatenate(c) for c in zip(*rows))
-    return Dataset(t, sess, lab.astype(str), x_model, x_base, meta)
+    return Dataset(t, sess, lab.astype(str), x_model, x_base, meta, low_quality)
 
 
 def _folds(ds: Dataset, window_s: float, n_blocks: int = 5) -> tuple[list[tuple[np.ndarray, np.ndarray]], str]:
@@ -132,7 +149,10 @@ def cross_validate(ds: Dataset, window_s: float) -> dict[str, Any]:
         scores = [f[name] for f in out["folds"]]
         out[f"{name}_mean"], out[f"{name}_std"] = float(np.mean(scores)), float(np.std(scores))
     out["chance"] = 1.0 / len(np.unique(ds.labels))
-    out["model_beats_baseline"] = out["model_mean"] > out["baseline_mean"]
+    v = probe_validation(out)
+    out["model_fold_wins"] = v["model_fold_wins"]
+    out["min_margin"] = PROBE_MIN_MARGIN
+    out["model_beats_baseline"] = probe_validated(v)      # the same rule `describe` applies before quoting a probe
     return out
 
 
@@ -142,8 +162,20 @@ def fit_head(ds: Dataset, meta: dict[str, Any]) -> ProbeHead:
     return ProbeHead([str(c) for c in lr.classes_], scaler.mean_, scaler.scale_, lr.coef_, lr.intercept_, meta)
 
 
+def verdict(cv: dict[str, Any]) -> str:
+    if cv["model_beats_baseline"]:
+        return (f"The probe beats the band-power baseline on held-out sessions (by {PROBE_MIN_MARGIN:.2f} or more, "
+                f"in {cv['model_fold_wins']} of {len(cv['folds'])} sessions).")
+    if not str(cv["scheme"]).startswith("session"):
+        return ("Only one session: the time-block estimate is optimistic, so the probe is not recommended yet. "
+                "Record and label at least two sessions.")
+    return (f"The probe did not beat band power by {PROBE_MIN_MARGIN:.2f} in most held-out sessions "
+            f"(won {cv['model_fold_wins']} of {len(cv['folds'])}): the model is not recommended for this task.")
+
+
 async def train_probe(facade: Any, session_ids: list[str], plugin: str = "cbramod", label_from: str = "markers",
-                      out: str | Path = "head.npz", options: dict[str, Any] | None = None) -> dict[str, Any]:
+                      out: str | Path = "head.npz", options: dict[str, Any] | None = None,
+                      min_usable: float = 0.5) -> dict[str, Any]:
     try:
         import sklearn  # noqa: F401
     except ImportError as exc:
@@ -151,16 +183,15 @@ async def train_probe(facade: Any, session_ids: list[str], plugin: str = "cbramo
     if not session_ids:
         raise ConfigError("give at least one session")
     options = dict(options or {})
-    ds = await collect(facade, session_ids, plugin, options, label_from)
+    ds = await collect(facade, session_ids, plugin, options, label_from, min_usable)
     if len(np.unique(ds.labels)) < 2:
         raise ConfigError(f"need at least two labels, found {sorted(set(ds.labels))}")
     cv = cross_validate(ds, float(ds.meta.get("window_s", 4.0)))
     counts = {str(k): int(v) for k, v in zip(*np.unique(ds.labels, return_counts=True))}
     meta = {**ds.meta, "model": plugin, "label_from": label_from, "sessions": session_ids, "counts": counts,
-            "trained_at": datetime.now(UTC).isoformat(), "cv": cv}
+            "min_usable": min_usable, "low_quality_windows": ds.low_quality, "trained_at": datetime.now(UTC).isoformat(), "cv": cv}
     head = fit_head(ds, meta)
     path = Path(out).resolve()
     head.save(path)
-    verdict = ("The probe beats the band-power baseline." if cv["model_beats_baseline"] else
-               "Band power does as well or better: the model is not recommended for this task.")
-    return {"head": str(path), "classes": head.classes, "windows": counts, "cv": cv, "verdict": verdict}
+    return {"head": str(path), "classes": head.classes, "windows": counts, "low_quality_windows": ds.low_quality,
+            "cv": cv, "verdict": verdict(cv)}

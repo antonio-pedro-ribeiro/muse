@@ -16,6 +16,7 @@ class Quality(Analyzer):
                                  # (mains hum removed); hum alone makes a channel noisy only when extreme
     summary = "Per-channel contact/noise check (std, drift, line noise) -> quality/mask"
     inputs = [StreamSelector(kind="eeg")]
+    produces = ["mask", "derived"]
 
     class Config(BaseModel):
         window_s: float = Field(2.0, description="Seconds of signal judged at a time.")

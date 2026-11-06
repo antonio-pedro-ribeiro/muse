@@ -7,12 +7,14 @@ import hmac
 import io
 import ipaddress
 import json
+import re
 import secrets
 import uuid
 import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
@@ -48,6 +50,33 @@ def load_or_create_token(path: Path) -> tuple[str, bool]:
     return token, True
 
 
+def cross_origin(origin: str | None, host: str | None) -> bool:
+    """True if a browser sent this request from a page served elsewhere. Without a token, any site open in the
+    user's browser could otherwise POST to (or open a WebSocket on) 127.0.0.1. Non-browser clients send no Origin."""
+    if origin is None:
+        return False
+    return urlsplit(origin).netloc.lower() != (host or "").lower()
+
+
+REPO_ID = re.compile(r"[A-Za-z0-9][\w.-]*/[\w.-]+")
+REVISION = re.compile(r"[\w.-]{1,64}")
+
+
+def check_model_options(options: dict[str, Any]) -> None:
+    """Model options from HTTP clients may name Hugging Face weights but not files or folders on the server."""
+    if "head" in options:
+        raise HTTPException(422, "`head` cannot be set here")
+    weights, revision = options.get("weights"), options.get("revision")
+    if weights is not None and (not REPO_ID.fullmatch(str(weights)) or ".." in str(weights)):
+        raise HTTPException(422, "`weights` must be a Hugging Face repo id (org/name), not a server path")
+    check_revision(revision)
+
+
+def check_revision(revision: Any) -> None:
+    if revision is not None and (not REVISION.fullmatch(str(revision)) or ".." in str(revision)):
+        raise HTTPException(422, "invalid `revision`")
+
+
 def problem(status: int, title: str, detail: str, plugin: str | None = None) -> JSONResponse:
     body: dict[str, Any] = {"type": "about:blank", "title": title, "status": status, "detail": detail}
     if plugin:
@@ -61,7 +90,11 @@ def create_app(facade: KernelFacade, token: str | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def revalidate_static(request: Request, call_next: Any) -> Response:
-        """The UI has no build step or hashed file names, so browsers must revalidate (ETag) after upgrades."""
+        """The UI has no build step or hashed file names, so browsers must revalidate (ETag) after upgrades.
+        Requests that change something must come from this server's own pages (or from a non-browser client)."""
+        if request.method not in ("GET", "HEAD", "OPTIONS") and cross_origin(request.headers.get("origin"),
+                                                                              request.headers.get("host")):
+            return problem(403, "Forbidden", "cross-origin request refused")
         response = await call_next(request)
         if not request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-cache")
@@ -246,17 +279,35 @@ def create_app(facade: KernelFacade, token: str | None = None) -> FastAPI:
 
     @app.post(f"{P}/models/{{plugin}}/pull", dependencies=deps)
     async def pull_model(plugin: str, revision: str | None = None) -> dict[str, Any]:
+        check_revision(revision)
         return await facade.pull_model(plugin, revision)
 
     @app.post(f"{P}/probes", dependencies=deps)
     async def train_probe(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        """Body: {sessions, plugin, label_from, out, options}. The head is written on the server."""
-        return await facade.train_probe(**body)
+        """Body: {sessions, plugin, label_from, name, options, min_usable}. The head is stored on the server as
+        <data>/.muse/probes/<name>.npz; download it from GET /probes/{name}."""
+        if "out" in body:
+            raise HTTPException(422, "`out` is not accepted over HTTP: give a `name`, then download the head "
+                                     "from /api/v1/probes/{name}")
+        options = dict(body.get("options") or {})
+        check_model_options(options)
+        return await facade.train_probe(list(body.get("sessions") or []), str(body.get("plugin") or "cbramod"),
+                                        str(body.get("label_from") or "markers"), options=options,
+                                        min_usable=float(body.get("min_usable", 0.5)),
+                                        name=str(body.get("name") or "head"))
+
+    @app.get(f"{P}/probes/{{name}}", dependencies=deps)
+    async def probe_file(name: str) -> FileResponse:
+        path = facade.probe_path(name)
+        return FileResponse(path, media_type="application/octet-stream", filename=path.name)
 
     @app.websocket(f"{P}/sessions/{{sid}}/live")
     async def live(ws: WebSocket, sid: str, streams: str | None = None, max_hz: float = 20.0) -> None:
         if not authorized(ws.headers.get("authorization"), ws.query_params.get("token")):
             await ws.close(code=4401)
+            return
+        if cross_origin(ws.headers.get("origin"), ws.headers.get("host")):     # browsers don't apply CORS to WS
+            await ws.close(code=4403)
             return
         await ws.accept()
         wanted = [s for s in (streams or "").split(",") if s] or None

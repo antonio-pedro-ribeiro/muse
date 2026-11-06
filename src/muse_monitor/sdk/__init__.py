@@ -7,7 +7,7 @@ from .plugin import (API_VERSION, Analyzer, Context, DeviceNotFound, Incompatibl
 from .types import (Chunk, DeviceInfo, Event, Health, Report, SessionInfo, StreamInfo, StreamSelector,
                     Window)
 from .views import Axis, Threshold, ViewSpec
-from .model import ModelAnalyzer, ProbeHead, models_dir
+from .model import PROBE_MIN_MARGIN, ModelAnalyzer, ProbeHead, models_dir, probe_validated, probe_validation
 
 # Approximate MNE standard_1005 positions (metres, head frame) for Muse electrodes.
 MUSE_POSITIONS: dict[str, tuple[float, float, float]] = {
@@ -21,7 +21,7 @@ MUSE_POSITIONS: dict[str, tuple[float, float, float]] = {
 __all__ = [
     "API_VERSION", "Analyzer", "Aligner", "Axis", "Chunk", "Context", "DeviceInfo", "DeviceNotFound", "Event", "Health",
     "IncompatibleInput", "MASK_FLAT", "MASK_LABELS", "MASK_NOISY", "MASK_OK", "MASK_POOR_CONTACT",
-    "ModelAnalyzer", "ProbeHead", "models_dir",
+    "ModelAnalyzer", "PROBE_MIN_MARGIN", "ProbeHead", "models_dir", "probe_validated", "probe_validation",
     "MUSE_POSITIONS", "Plugin", "QualityMask", "Report", "SessionInfo", "Sink", "Source",
     "SourceDisconnected", "StreamInfo", "StreamSelector", "Threshold", "ViewSpec", "Window", "Windower",
     "DEFAULT_BANDS", "band_powers", "eeg_channels", "welch_psd",

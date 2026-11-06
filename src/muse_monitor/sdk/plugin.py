@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Literal
+from typing import Any, ClassVar, Literal
+from collections.abc import Callable
 
 from pydantic import BaseModel
 
@@ -102,6 +103,9 @@ class Source(Plugin):
 class Analyzer(Plugin):
     kind = "analyzer"
     inputs: ClassVar[list[StreamSelector]] = []
+    # Stream kinds setup() may declare. The kernel sets up producers before the analyzers whose inputs select
+    # those kinds, whatever their order in the pipeline (an analyzer only sees streams declared before it).
+    produces: ClassVar[list[str]] = []
 
     @abstractmethod
     def setup(self, inputs: dict[str, StreamInfo]) -> list[StreamInfo]:

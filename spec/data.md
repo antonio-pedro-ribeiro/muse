@@ -86,8 +86,11 @@ recordings/<session-id>/          # MUSE_DATA_DIR; gitignored
   reports/<timestamp>.html
 ```
 
-- Parquet row groups are flushed every 5 s. After a crash, at most the last 5 s are lost, and
-  `muse sessions repair` finalizes the file.
+- Every 5 s the buffer is written as a complete Parquet file in `raw/<stream>.parts/`. At close the parts
+  are merged into `raw/<stream>.parquet`. After a crash at most the last 5 s are lost, the parts stay
+  readable, and `muse sessions repair` merges them.
+- Offline runs write `derived/<instance>/…`, `derived/events.jsonl` and `analyses/<id>.json`; a
+  re-analysis replaces the previous derived data, and its events replace the live ones from the same plugins.
 - `StreamInfo` is stored in each Parquet file's schema metadata, so every file describes itself.
 - EEG is stored in µV. The scale factor goes in `meta`, so the raw counts can be recovered.
 - Device serials are hashed with a per-install salt.

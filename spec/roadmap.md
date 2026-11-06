@@ -30,11 +30,21 @@
 
 CI: `uv run pytest -m "not device"`, `ruff`, `pyright --strict` on `sdk/` and `kernel/`.
 
-## 4. Decided
+## 4. Status
+
+| Milestone | State |
+|---|---|
+| M0–M2 | Done. Verified with synthetic data; the 30 min real-device check for M1 is still to do |
+| M3 | Done. Every CLI command was run against `muse serve` with `--server` |
+| M4 | Done. Smoke-tested in Chromium; CPU/latency targets not measured yet |
+| M5 | Not started (needs real recordings to evaluate the probe) |
+| M6 | `artifacts` and CSV/EDF+ export done; EDF+ not yet opened in MNE |
+
+## 5. Decided
 
 - **Device link:** direct BLE via OpenMuse (`openmuse` source). Phone/HTTP ingestion is out of scope.
 - **Built-in model:** CBraMod.
 
-## 5. Open questions
+## 6. Open questions
 
 1. **Persist live derived streams?** Proposed default: no, regenerate them offline.

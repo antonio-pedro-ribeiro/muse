@@ -1,6 +1,6 @@
 # Muse Monitor: Application Spec
 
-Status: **draft v0.3**
+Status: **v0.4**, implemented through M4 (see [roadmap.md](roadmap.md#status))
 
 | File | Contents |
 |---|---|
@@ -80,7 +80,8 @@ Plugins import only `muse_monitor.sdk`.
 ## 4. Stack
 
 Python 3.13, uv, numpy, scipy, pydantic v2, `tomllib`, Typer + Rich, FastAPI + uvicorn, pyarrow,
-uPlot (vendored). Optional extras: `[models]` (torch, braindecode/transformers), `[edf]` (pyedflib).
+a small canvas renderer (no frontend dependencies). EDF+ is written by a built-in writer (pyedflib has no
+Python 3.13 Windows wheel). Optional extra (M5): `[models]` (torch, braindecode).
 A plugin whose extra isn't installed is listed as `unavailable` with an install hint.
 
 ## 5. Decisions

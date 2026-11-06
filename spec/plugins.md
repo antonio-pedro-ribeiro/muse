@@ -19,11 +19,18 @@ class Plugin:
 
 class Context:                            # the plugin's only handle on the kernel
     session_id: str
+    instance_id: str
     mode: Literal["live", "offline"]
+    recordings_dir: Path                  # data root (recorder, export)
     log: logging.Logger
-    def emit(self, item: Chunk | Event) -> None
+    def emit(self, item: Chunk | Event) -> None   # analyzer stream ids are namespaced automatically
     def data_dir(self) -> Path            # per-plugin cache (model weights, …)
+    async def run_blocking(self, fn, *args)       # off the loop; dedicated thread if cpu_bound
+    async def pace(self) -> None          # sources call after emitting: offline waits for room
 ```
+
+The on-disk format is public too: `muse_monitor.sdk.storage` (writer, reader, compaction), so sources,
+sinks and tools share one implementation without importing each other.
 
 ## 2. Source
 
@@ -49,6 +56,7 @@ class Analyzer(Plugin):
 
     def setup(self, inputs: dict[str, StreamInfo]) -> list[StreamInfo]: ...  # outputs; may raise IncompatibleInput
     async def process(self, chunk: Chunk, gap: bool) -> None: ...  # gap=True -> reset state first
+    async def on_event(self, event: Event) -> None: ...            # markers, calibration, baseline.ready
     def views(self) -> list[ViewSpec]: return []
     async def summarize(self) -> Report | None: return None       # end of session, for reports
 ```
@@ -98,12 +106,17 @@ class ViewSpec(BaseModel):
     id: str
     title: str
     type: Literal["timeseries", "spectrum", "bars", "metric", "table", "events"]
+    description: str = ""              # plain-language explanation, shown behind an info icon
     streams: list[str]
     channels: list[str] | None = None
     window_s: float = 10.0
     y: Axis | None = None              # label, unit, min, max, log
     thresholds: list[Threshold] = []   # colored bands
+    event_types: list[str] = []        # "events" views: type prefixes to show
 ```
+
+Every view and every config option (`Field(description=...)`) carries a short plain-language
+explanation; the web UI and reports show it behind an "i" icon, and tests require it for built-ins.
 
 The web UI renders all types. The CLI renders `metric`, `bars`, `table` and `events`, plus
 `timeseries` as a sparkline. Reports embed the web renderer together with a data snapshot.

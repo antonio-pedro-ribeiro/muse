@@ -49,10 +49,15 @@ Exit codes: `0` ok, `1` runtime error, `2` usage/config error, `3` device not fo
 | `GET /sessions` · `GET /sessions/{id}` | List / detail + health |
 | `POST /sessions/{id}/stop` | Stop |
 | `POST /sessions/{id}/markers` | Add marker |
+| `POST /sessions/{id}/calibrate` | Start the eyes-open/closed protocol |
 | `GET /sessions/{id}/views` | `ViewSpec[]` |
-| `GET /sessions/{id}/streams/{stream}?from=&to=&format=json\|csv` | Data slice |
+| `GET /sessions/{id}/streams` | Recorded streams |
+| `GET /sessions/{id}/streams/{stream}?from=&to=&format=json\|csv&max_points=` | Data slice (min/max decimated) |
 | `GET /sessions/{id}/events` | Events |
 | `POST /sessions/{id}/analyses` → `GET /jobs/{id}` | Offline run |
+| `GET /sessions/{id}/reports` · `GET /sessions/{id}/reports/{name}` | HTML reports |
+| `POST /sessions/{id}/export?format=csv\|edf` | File download (CSV as zip) |
+| `POST /sessions/{id}/repair` | Merge leftover parts after a crash |
 
 Errors use RFC 9457 problem JSON.
 
@@ -73,7 +78,7 @@ and WebSocket alike. Use a reverse proxy for TLS.
 
 ## 3. Web UI
 
-A static page served at `/`, built from plain ES modules with vendored uPlot. There is no build step
+A static page served at `/`, built from plain scripts with a small canvas renderer. There is no build step
 and no CDN.
 
 | Page | Contents |
@@ -83,5 +88,5 @@ and no CDN.
 | Session | Recorded traces with event overlay, derived views, reports |
 | Plugins | Status and config forms generated from JSON schema |
 
-There is one renderer per `ViewSpec.type` (`renderers/<type>.js`). UI copy describes measurements
+There is one render function per `ViewSpec.type`, all in `renderers.js` (also inlined into reports). UI copy describes measurements
 ("relative alpha power"), not mental states.

@@ -6,22 +6,26 @@ Guidance for AI coding agents (and humans) working in this repository.
 
 Build an application that **monitors and analyzes EEG recordings from a Muse S Athena headband**.
 
-Data path:
+Data path (primary, verified 2026-11-06 on the development PC):
 
 ```
-Muse S Athena ──BLE 5.3──▶ Android app (phone) ──HTTP stream──▶ this application
-                                                               ├─ ingest & buffer
-                                                               ├─ live monitoring (signal quality, band power)
-                                                               ├─ persistent recording storage
-                                                               └─ offline analysis & reports
+Muse S Athena ──BLE 5.3──▶ PC (Windows, bleak/WinRT) ──OpenMuse──▶ this application
+                                                                  ├─ ingest & buffer (in-process or via LSL)
+                                                                  ├─ live monitoring (signal quality, band power)
+                                                                  ├─ persistent recording storage
+                                                                  └─ offline analysis & reports
 ```
 
-The headband never talks to this application directly. The Android app owns the Bluetooth connection and forwards
-samples over HTTP. This application is the **receiver, storage and analysis** side.
+The PC connects to the headband **directly over Bluetooth LE** using
+[OpenMuse](https://github.com/DominiqueMakowski/OpenMuse), with no phone in between. OpenMuse handles the BLE
+handshake, preset selection and packet decoding, and can publish LSL streams (`Muse_EEG`, `Muse_ACCGYRO`, …).
+
+Fallback (not implemented): an Android app owns the BLE link and forwards samples over the network. Use it only
+when the PC isn't near the headband. See "Fallback: streaming via Android" below.
 
 ### Goals
 
-1. **Ingest**: accept the Android app's HTTP stream reliably (reconnects, gaps, out-of-order or duplicate packets).
+1. **Ingest**: receive the BLE stream reliably (reconnects, gaps, out-of-order or duplicate packets).
 2. **Monitor live**: show raw traces, per-channel signal quality (contact/noise), band powers (delta, theta, alpha,
    beta, gamma), battery and connection state.
 3. **Record**: store every session losslessly with timestamps and device/preset metadata, in an open format
@@ -33,8 +37,39 @@ samples over HTTP. This application is the **receiver, storage and analysis** si
 
 - Medical diagnosis. This is a consumer device and the outputs are not clinical. Do not word UI text or reports as
   diagnoses.
-- Re-implementing the Bluetooth link on the desktop/server side. If that's ever needed, use OpenMuse (see
-  references) instead of writing a new BLE stack.
+- Writing our own BLE stack or packet decoder. Use OpenMuse (`OpenMuse.MuseS`, `OpenMuse.parse_message`,
+  `OpenMuse.decode_rawdata`) and contribute fixes upstream where possible.
+
+## Repository layout and commands
+
+- Python 3.13 project managed with **uv** (`pyproject.toml`, `uv.lock`). OpenMuse is installed from its GitHub
+  repository (see `[tool.uv.sources]`).
+- `src/muse_monitor/check.py`: the `muse-check` connectivity CLI.
+
+```
+uv sync                                   # install dependencies
+uv run muse-check scan                    # list Muse headbands in range
+uv run muse-check test                    # connect, stream 10 s, report rates/loss/battery/EEG contact
+uv run muse-check test --duration 30 --save raw.txt   # also save raw packets (OpenMuse text format)
+uv run OpenMuse stream --address <MAC>    # publish LSL streams
+```
+
+`muse-check test` exits 0 (PASS) when EEG arrives at ≥90% of 256 Hz with ≤2% of subpackets missing.
+
+## Connecting from Windows: lessons learned
+
+- **Do not pair the headband in Windows Settings.** When it was paired, every connection dropped right after
+  connecting ("Unreachable" on GATT access, then "Not connected"), in our tool and in `OpenMuse record` alike.
+  Removing the device in Settings → Bluetooth & devices fixed it; bleak connects without pairing.
+- The headband only advertises (and so is only found by a scan) when nothing else is connected to it. Close the
+  Muse phone app first.
+- Subscribing to the control characteristic (`273e0001`, firmware/battery info) can fail on Windows. Treat it as
+  optional; only the data characteristics (`273e0013`, `273e0014`) are required.
+- The first subpacket of each BLE packet has no `subpkt_index` (`None`). It fills the next slot in the sequence;
+  don't count it as a lost packet.
+- Observed on this PC (preset p1041, Intel adapter, about 50–60 dBm RSSI): EEG 8 ch at 256 Hz, optics 16 ch at
+  ~64 Hz, motion at ~51 Hz, about 1–2% of subpackets missing, connect time 1.5–2.5 s. Firmware 3.1.19,
+  hardware 01.1.
 
 ## Device facts: Muse S Athena
 
@@ -66,19 +101,20 @@ These come from the OpenMuse and muse-rs projects, which reverse-engineered the 
 **Implication for this codebase:** never hard-code a channel count. Read channel names, counts and sample rates from
 the stream metadata (or infer them from the payload) and store them with each recording.
 
-### BLE layer (for reference only; the Android app handles it)
+### BLE layer (handled by OpenMuse)
 
-- GATT characteristics are in the `273e00xx-…` family. Athena multiplexes all sensors onto one characteristic
-  (`273e0013`). Control/commands go through `273e0001`.
-- Startup sequence (muse-rs): `v4 → s → h → p1045 → dc001 ×2 → d → L1`.
+- GATT characteristics are in the `273e00xx-4c4d-454d-96be-f03bac821358` family. Athena sends sensor data on
+  `273e0013` and `273e0014`. Control/commands go through `273e0001`.
+- Startup sequence (OpenMuse): `v6 → s → h → <preset> → s → dc001 ×2 → L1 → s`. Stop with `h`.
 - Packets contain tagged subpackets: `0x11`/`0x12` EEG 4/8 ch, `0x34`/`0x35`/`0x36` optics 4/8/16 ch, `0x47` IMU,
   `0x53` DRL/REF, `0x88`/`0x98` battery.
 - Athena packets carry no reliable per-sample timestamps. Timestamps are assigned on the receiving side, so expect
   clock jitter and reconstruct times from the sample rate and packet counters where possible.
 
-## The HTTP stream from Android: open questions
+## Fallback: streaming via Android (open questions)
 
-Before writing the ingest layer, confirm these points with the user or from a captured sample:
+Not needed while the direct BLE path works. If it's ever built, first confirm these points with the user or from a
+captured sample:
 
 - [ ] **Which Android app** does the streaming (its own app, Mind Monitor, Muse app, something custom)?
       Mind Monitor, the best-known third-party app, documents **OSC over UDP** (default port 5000), not HTTP. If the
@@ -93,8 +129,8 @@ Save a short real capture under `samples/` (anonymized) as soon as one exists an
 
 ## Engineering conventions
 
-- **Language/stack**: not chosen yet. Python is the default recommendation because the ecosystem fits (MNE-Python,
-  SciPy, mne-lsl, OpenMuse). Record the decision here once it's made.
+- **Language/stack**: Python 3.13 with uv, built on OpenMuse (bleak, mne-lsl). Use MNE-Python/SciPy for
+  analysis.
 - **Keep raw data**: always store the unmodified incoming samples. Filtering and derived features are separate,
   reproducible steps. Never overwrite raw data.
 - **Units and metadata**: store µV for EEG and declare the units of every other stream. Each recording stores the

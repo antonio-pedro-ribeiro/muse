@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# EEG recordings are sensitive personal data; keep them out of git
+data/
+recordings/
+*.edf
+*.fif
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

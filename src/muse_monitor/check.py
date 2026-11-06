@@ -22,6 +22,8 @@ from OpenMuse.utils import get_utc_timestamp
 
 # Fraction of the nominal sample rate a stream must reach to count as healthy.
 RATE_OK = 0.90
+# Fraction of subpackets that may be missing (by sequence index) before a stream is degraded.
+MAX_LOSS = 0.02
 # EEG standard deviation bounds (µV) for a rough contact check.
 EEG_FLAT_UV = 1.0
 EEG_NOISY_UV = 100.0
@@ -49,6 +51,10 @@ class SensorStats:
         self.first = self.first if self.first is not None else now
         self.last = now
         idx = sub.get("subpkt_index")
+        # The first subpacket of each BLE packet carries no index of its own; it
+        # occupies the next slot in the sequence, so it is not a loss.
+        if idx is None and self._prev_idx is not None:
+            idx = (self._prev_idx + 1) % 256
         if idx is not None:
             if self._prev_idx is not None:
                 gap = (idx - self._prev_idx) % 256
@@ -172,7 +178,8 @@ def _report(stats: dict[int, SensorStats], info: dict[str, str], args) -> int:
         if cfg["type"] == "BATTERY":
             status = "ok"
         else:
-            status = "ok" if rate >= RATE_OK * nominal and s.lost == 0 else "DEGRADED"
+            loss = s.lost / (s.subpackets + s.lost)
+            status = "ok" if rate >= RATE_OK * nominal and loss <= MAX_LOSS else "DEGRADED"
         if cfg["type"] == "EEG" and status == "ok":
             eeg_ok = True
         print(
@@ -190,9 +197,12 @@ def _report(stats: dict[int, SensorStats], info: dict[str, str], args) -> int:
 
         data = np.concatenate(eeg[0].chunks)
         names = select_eeg_channels(data.shape[1])
-        print("\nEEG contact (std over the run, rough heuristic):")
+        print("\nEEG contact (std after removing drift below ~1 Hz; rough heuristic):")
+        win = int(SENSORS[eeg[0].tag]["rate"])  # 1 s moving average as a crude high-pass
+        kernel = np.ones(win) / win
         for name, col in zip(names, data.T):
-            sd = float(np.std(col - np.mean(col)))
+            hp = col - np.convolve(col, kernel, mode="same") if len(col) > 2 * win else col - col.mean()
+            sd = float(np.std(hp[win:-win] if len(hp) > 2 * win else hp))
             verdict = "flat?" if sd < EEG_FLAT_UV else "noisy / poor contact?" if sd > EEG_NOISY_UV else "ok"
             print(f"  {name:<9} std {sd:8.1f} uV  {verdict}")
 

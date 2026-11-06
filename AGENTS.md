@@ -6,7 +6,7 @@ Guidance for AI coding agents (and humans) working in this repository.
 
 Build an application that **monitors and analyzes EEG recordings from a Muse S Athena headband**.
 
-Data path:
+Data path (verified 2026-11-06 on the development PC):
 
 ```
 Muse S Athena ──BLE 5.3 (OpenMuse)──▶ this application
@@ -35,6 +35,37 @@ Muse S Athena ──BLE 5.3 (OpenMuse)──▶ this application
   diagnoses.
 - Writing our own BLE stack. Use OpenMuse for connection and packet decoding.
 - Receiving data from a phone app (HTTP/OSC). Revisit only if a concrete need appears.
+
+## Repository layout and commands
+
+- Python 3.13 project managed with **uv** (`pyproject.toml`, `uv.lock`). OpenMuse is installed from its GitHub
+  repository (see `[tool.uv.sources]`).
+- `src/muse_monitor/check.py`: the `muse-check` connectivity CLI.
+
+```
+uv sync                                   # install dependencies
+uv run muse-check scan                    # list Muse headbands in range
+uv run muse-check test                    # connect, stream 10 s, report rates/loss/battery/EEG contact
+uv run muse-check test --duration 30 --save raw.txt   # also save raw packets (OpenMuse text format)
+uv run OpenMuse stream --address <MAC>    # publish LSL streams
+```
+
+`muse-check test` exits 0 (PASS) when EEG arrives at ≥90% of 256 Hz with ≤2% of subpackets missing.
+
+## Connecting from Windows: lessons learned
+
+- **Do not pair the headband in Windows Settings.** When it was paired, every connection dropped right after
+  connecting ("Unreachable" on GATT access, then "Not connected"), in our tool and in `OpenMuse record` alike.
+  Removing the device in Settings → Bluetooth & devices fixed it; bleak connects without pairing.
+- The headband only advertises (and so is only found by a scan) when nothing else is connected to it. Close the
+  Muse phone app first.
+- Subscribing to the control characteristic (`273e0001`, firmware/battery info) can fail on Windows. Treat it as
+  optional; only the data characteristics (`273e0013`, `273e0014`) are required.
+- The first subpacket of each BLE packet has no `subpkt_index` (`None`). It fills the next slot in the sequence;
+  don't count it as a lost packet.
+- Observed on this PC (preset p1041, Intel adapter, about 50–60 dBm RSSI): EEG 8 ch at 256 Hz, optics 16 ch at
+  ~64 Hz, motion at ~51 Hz, about 1–2% of subpackets missing, connect time 1.5–2.5 s. Firmware 3.1.19,
+  hardware 01.1.
 
 ## Device facts: Muse S Athena
 
@@ -68,9 +99,9 @@ the stream metadata (or infer them from the payload) and store them with each re
 
 ### BLE layer (handled by OpenMuse; reference)
 
-- GATT characteristics are in the `273e00xx-…` family. Athena multiplexes all sensors onto one characteristic
-  (`273e0013`). Control/commands go through `273e0001`.
-- Startup sequence (muse-rs): `v4 → s → h → p1045 → dc001 ×2 → d → L1`.
+- GATT characteristics are in the `273e00xx-4c4d-454d-96be-f03bac821358` family. Athena sends sensor data on
+  `273e0013` and `273e0014`. Control/commands go through `273e0001`.
+- Startup sequence (OpenMuse): `v6 → s → h → <preset> → s → dc001 ×2 → L1 → s`. Stop with `h`.
 - Packets contain tagged subpackets: `0x11`/`0x12` EEG 4/8 ch, `0x34`/`0x35`/`0x36` optics 4/8/16 ch, `0x47` IMU,
   `0x53` DRL/REF, `0x88`/`0x98` battery.
 - Athena packets carry no reliable per-sample timestamps. Timestamps are assigned on the receiving side, so expect

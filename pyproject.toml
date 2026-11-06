@@ -2,6 +2,7 @@
 name = "muse-monitor"
 version = "0.1.0"
 description = "Monitor and analyze Muse S Athena EEG recordings"
+readme = "README.md"
 authors = [
     { name = "antonio-pedro-ribeiro", email = "antonio-pedro-ribeiro@users.noreply.github.com" }
 ]

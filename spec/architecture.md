@@ -1,10 +1,10 @@
 # Muse Monitor: Application Spec
 
-Status: **v0.4**, implemented through M4 (see [roadmap.md](roadmap.md#status))
+Status: **v0.4**, implemented through M6; M5's check on real recordings is pending (see [roadmap.md](roadmap.md#4-status))
 
 | File | Contents |
 |---|---|
-| [README.md](README.md) | Goals, principles, architecture, decisions |
+| [architecture.md](architecture.md) | Goals, principles, architecture, decisions (this file) |
 | [plugins.md](plugins.md) | Plugin contracts, config, built-ins, example |
 | [data.md](data.md) | Types, time, storage, export |
 | [interfaces.md](interfaces.md) | CLI, API, web UI |

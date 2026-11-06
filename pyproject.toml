@@ -1,0 +1,21 @@
+[project]
+name = "muse-monitor"
+version = "0.1.0"
+description = "Monitor and analyze Muse S Athena EEG recordings"
+authors = [
+    { name = "antonio-pedro-ribeiro", email = "antonio-pedro-ribeiro@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "openmuse",
+]
+
+[project.scripts]
+muse-check = "muse_monitor.check:main"
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+openmuse = { git = "https://github.com/DominiqueMakowski/OpenMuse" }
